@@ -1,0 +1,330 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum defining the possible user roles
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  PHARMACIST
+  CUSTOMER
+  SELLER
+}
+
+// Enum for Payment Methods
+enum PaymentMethod {
+  CASH
+  CARD
+  ONLINE_TRANSFER
+  UPI
+  OTHER
+}
+
+// Model for storing core user authentication data
+model User {
+  id            String    @id @default(cuid()) // Using CUID for unique IDs
+  email         String    @unique // Email must be unique for login
+  passwordHash  String // Store the hashed password, never plaintext
+  role          Role      @default(CUSTOMER) // Default role is CUSTOMER
+  isActive      Boolean   @default(true) // To enable/disable user accounts
+  emailVerified DateTime? // Timestamp when the email was verified
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Optional: Link to a profile for additional details
+  profile Profile?
+
+  // Optional: Add relations to other models if needed, e.g., orders for customers, products for sellers, etc.
+  // orders Order[] // Example for customer
+  // products Product[] // Example for seller
+
+  // Relations required by @auth/prisma-adapter
+  accounts     Account[]
+  Session      Session[]
+  RefreshToken RefreshToken[]
+  Report       Report[]
+  SalesMade    Sale[]         @relation("StaffSales") // Sales processed by this staff member
+  Customer     Customer?
+}
+
+// Model for storing additional user profile information
+model Profile {
+  id             String  @id @default(cuid())
+  userId         String  @unique // One-to-one relation with User
+  firstName      String?
+  lastName       String?
+  phoneNumber    String?
+  address        String? // Could be expanded into structured address fields
+  profilePicture String? // URL to the user's profile picture
+
+  // Relation back to the User model
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade) // Cascade delete profile if user is deleted
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Model for Session-Based Authentication
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique // The token stored in the user's cookie
+  userId       String // Links the session to a User
+  expires      DateTime // When the session expires
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Model for storing JWT Refresh Tokens
+model RefreshToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique // Store a hash of the refresh token, not the token itself
+  userId    String // Links the token to a User
+  expires   DateTime // When the refresh token expires
+  revoked   Boolean  @default(false) // Flag to indicate if the token has been revoked
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Model required by @auth/prisma-adapter for linking OAuth accounts
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// Model required by @auth/prisma-adapter for email verification tokens
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Model for Inventory Categories
+model Category {
+  id          String  @id @default(cuid())
+  name        String  @unique // Category name must be unique
+  description String?
+
+  // Self-relation for hierarchical categories (e.g., Parent > Child)
+  parentCategoryId String?
+  parentCategory   Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: SetNull) // SetNull to avoid deleting children when parent is deleted
+  subCategories    Category[] @relation("CategoryHierarchy")
+
+  // Relation to Items (Many-to-Many)
+  items Item[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Model for Suppliers
+model Supplier {
+  id            String  @id @default(cuid())
+  name          String // Supplier name
+  contactPerson String?
+  email         String? @unique
+  phone         String?
+  address       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Item      Item[]
+}
+
+// Model for Items (Products)
+model Item {
+  id             String   @id @default(cuid())
+  name           String // Name of the item/drug
+  manufacturer   String? // Manufacturer name
+  generic_name   String? // Generic name of the drug
+  formulation    String? // e.g., Tablet, Syrup, Capsule, Injection
+  strength       String? // e.g., 500mg, 10mg/5ml
+  unit           String? // e.g., mg, ml, pcs
+  schedule       String? // Drug schedule (e.g., H, H1, G - depends on regulations)
+  description    String? // Detailed description
+  image          String? // URL for the main product image
+  thumbnailUrls  String[] // List of URLs for thumbnail images
+  units_per_pack Int? // e.g., 10 tablets per strip, 1 bottle per pack
+  price          Float // Selling price per unit/pack (define clearly what this price represents)
+  tax_rate       Float?   @default(0.0) // Applicable tax rate (e.g., 0.05 for 5%)
+  discount       Float?   @default(0.0) // Discount percentage (e.g., 0.1 for 10%) or fixed amount
+  reorder_level  Int? // Minimum stock level before reordering is triggered
+  isActive       Boolean  @default(true) // Is the item actively sold/managed?
+  isAvailable    Boolean  @default(true) // Is the item generally available for ordering (might be out of stock temporarily)?
+
+  // Fields moved/added from Batch model for simpler inventory tracking
+  quantity_in_stock Int       @default(0) // Total quantity currently in stock
+  expiry_date       DateTime? // Nearest or most relevant expiry date for the stock
+  purchase_price    Float? // Average or last purchase price
+  purchase_date     DateTime? // Last purchase date
+  sales_data        Json? // Can store aggregated sales info, or link to a dedicated Sales model
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relation to Categories (Many-to-Many)
+  categories Category[]
+
+  // Optional: Relation to a primary Supplier (One-to-Many)
+  supplierId String? // Foreign key to Supplier
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  saleItems SaleItem[] // Relation to sale items
+}
+
+// Model for Report Categories
+model ReportCategory {
+  id          String  @id @default(cuid())
+  name        String  @unique // e.g., Blood Tests, Imaging, Pathology
+  description String?
+
+  reports Report[] // Relation to reports in this category
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Model for Uploaded Medical Reports
+model Report {
+  id          String   @id @default(cuid())
+  title       String // User-defined title for the report
+  patientName String? // Name of the patient (Consider privacy/linking to a Patient model if applicable)
+  reportDate  DateTime // Date the test was conducted or report issued
+  fileUrl     String // URL of the uploaded file (e.g., S3, GCS)
+  fileType    String? // MIME type (e.g., application/pdf, image/jpeg)
+  fileSize    Int? // File size in bytes
+  notes       String? // Optional notes about the report
+
+  categoryId String // Foreign key to ReportCategory
+  category   ReportCategory @relation(fields: [categoryId], references: [id])
+
+  uploadedById String // Foreign key to the User who uploaded it
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- Sales Related Models ---
+
+// Model for Customers (can be linked to a User or be a standalone customer)
+model Customer {
+  id      String  @id @default(cuid())
+  name    String // Customer's full name or a display name for walk-ins
+  email   String? @unique // Optional: for sending e-receipts or linking to user account
+  phone   String?
+  address String?
+
+  // Optional: If this customer is also a registered user
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  sales Sale[] // All sales made to this customer
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Model for a Sale transaction
+model Sale {
+  id            String        @id @default(cuid())
+  saleDate      DateTime      @default(now())
+  subTotal      Float // Sum of (SaleItem.priceAtSale * SaleItem.quantitySold) before item-specific discounts/taxes
+  totalDiscount Float         @default(0.0) // Overall discount applied to the sale (e.g., percentage or fixed amount on total)
+  totalTax      Float         @default(0.0) // Overall tax applied to the sale
+  grandTotal    Float // Final amount to be paid (subTotal - totalDiscount + totalTax)
+  paymentMethod PaymentMethod
+  paymentStatus String        @default("PENDING") // e.g., PENDING, PAID, PARTIALLY_PAID, FAILED
+  amountPaid    Float         @default(0.0)
+  notes         String?
+
+  // Staff who processed the sale
+  staffId String
+  staff   User   @relation("StaffSales", fields: [staffId], references: [id])
+
+  // Customer who made the purchase (optional)
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  saleItems SaleItem[] // Items included in this sale
+  invoice   Invoice? // The invoice generated for this sale
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Model for individual items within a Sale
+model SaleItem {
+  id             String @id @default(cuid())
+  quantitySold   Int
+  priceAtSale    Float // Price of the item per unit at the time of sale (from Item.price)
+  discountOnItem Float  @default(0.0) // Discount applied specifically to this item (percentage or fixed amount)
+  taxOnItem      Float  @default(0.0) // Tax applied specifically to this item
+  totalPrice     Float // (quantitySold * priceAtSale) - discountOnItem + taxOnItem
+
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade) // If sale is deleted, sale items are also deleted
+
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Restrict) // Prevent deleting an item if it's part of a sale history
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Model for the Bill/Invoice generated for a Sale
+model Invoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique // Auto-generated or system-defined unique invoice number
+  issuedDate    DateTime @default(now())
+  status        String   @default("DRAFT") // e.g., DRAFT, ISSUED, PAID, CANCELLED, VOIDED
+  notes         String? // Additional notes specific to the invoice
+
+  saleId String @unique // One-to-one relation with Sale
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  // Optional: Store a snapshot of key details for historical printing accuracy
+  // printedDetails Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// You might also consider models for:
+// - InventoryLocation (if tracking stock in multiple places)
+// - PurchaseOrder / PurchaseOrderItem
+// - StockAdjustment (for manual changes, damages, etc.)
