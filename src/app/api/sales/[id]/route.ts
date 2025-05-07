@@ -9,7 +9,7 @@ interface RouteContext {
 	}
 }
 
-export async function GET(req: NextRequest, { params }: RouteContext) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 		if (!user) return new NextResponse('Unauthorized', { status: 401 })

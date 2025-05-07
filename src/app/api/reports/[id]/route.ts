@@ -20,13 +20,9 @@ async function parsePatchFormData(req: NextRequest) {
 	return { data, file }
 }
 
-interface RouteContext {
-	params: {
-		id: string
-	}
-}
 
-export async function GET(req: NextRequest, { params }: RouteContext) {
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 		if (!user) return new NextResponse('Unauthorized', { status: 401 })
@@ -51,7 +47,7 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 	}
 }
 
-export async function PATCH(req: NextRequest, { params }: RouteContext) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 		if (!user) return new NextResponse('Unauthorized', { status: 401 })
@@ -62,8 +58,8 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 		if (!reportToUpdate) return new NextResponse('Report not found', { status: 404 })
 
 		// Authorization check: only owner or authorized roles can edit
-		if (reportToUpdate.uploadedById !== user.id && ![Role.ADMIN, Role.SUPER_ADMIN, Role.PHARMACIST].includes(user.role as Role)) {
-			return new NextResponse('Forbidden: You cannot edit this report', { status: 403 })
+		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
+			return new NextResponse('Unauthorized', { status: 401 })
 		}
 
 		const { data: formDataValues, file: newFile } = await parsePatchFormData(req)
@@ -114,7 +110,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 	}
 }
 
-export async function DELETE(req: NextRequest, { params }: RouteContext) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 		if (!user) return new NextResponse('Unauthorized', { status: 401 })

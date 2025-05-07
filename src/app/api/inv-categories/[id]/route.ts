@@ -13,7 +13,7 @@ interface RouteContext {
 	}
 }
 
-export async function GET(req: Request, { params }: RouteContext) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const { id } = await params
 
@@ -37,7 +37,7 @@ export async function GET(req: Request, { params }: RouteContext) {
 	}
 }
 
-export async function PATCH(req: Request, { params }: RouteContext) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 
@@ -69,7 +69,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 	}
 }
 
-export async function DELETE(req: Request, { params }: RouteContext) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {

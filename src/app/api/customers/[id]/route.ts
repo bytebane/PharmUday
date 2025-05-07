@@ -5,13 +5,8 @@ import { customerSchema } from '@/lib/validations/customer'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
 
-interface RouteContext {
-	params: {
-		id: string
-	}
-}
 
-export async function GET(req: NextRequest, { params }: RouteContext) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
@@ -27,7 +22,7 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 	}
 }
 
-export async function PATCH(req: NextRequest, { params }: RouteContext) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
@@ -61,7 +56,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 	}
 }
 
-export async function DELETE(req: NextRequest, { params }: RouteContext) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
