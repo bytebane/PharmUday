@@ -6,10 +6,13 @@ import { ReportCategory as PrismaReportCategory, Role } from '@/generated/prisma
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ReportCategoryForm } from './cat-form'
-import { PlusCircle, Edit, Trash2 } from 'lucide-react'
+import { PlusCircle, Edit, Trash2, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ColumnDef, flexRender, getCoreRowModel, useReactTable, getSortedRowModel, SortingState } from '@tanstack/react-table'
+import React from 'react'
 
 async function fetchReportCategoriesAPI(): Promise<PrismaReportCategory[]> {
 	const response = await fetch('/api/report-categories') // Ensure this API endpoint exists
@@ -41,6 +44,7 @@ export function ReportCategoryList({ initialReportCategories }: ReportCategoryLi
 	const [isSheetOpen, setIsSheetOpen] = useState(false)
 	const [editingCategory, setEditingCategory] = useState<PrismaReportCategory | null>(null)
 	const queryClient = useQueryClient()
+	const [sorting, setSorting] = React.useState<SortingState>([])
 
 	// Adjust roles as needed for who can manage report categories
 	const canModify = session?.user?.role === Role.ADMIN || session?.user?.role === Role.SUPER_ADMIN || session?.user?.role === Role.PHARMACIST
@@ -86,10 +90,82 @@ export function ReportCategoryList({ initialReportCategories }: ReportCategoryLi
 		setEditingCategory(null)
 	}
 
-	if (isLoading && !reportCategories) return <div>Loading initial report categories...</div>
-	if (error) return <div className='text-red-600'>Error: {error.message}</div>
+	const columns = React.useMemo<ColumnDef<PrismaReportCategory>[]>(
+		() => [
+			{
+				accessorKey: 'name',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Name
+						<ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => row.getValue('name'),
+			},
+			{
+				accessorKey: 'description',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Description
+						<ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => row.getValue('description') || 'N/A',
+			},
+			...(canModify
+				? [
+						{
+							id: 'actions',
+							header: () => <div className='text-right'>Actions</div>,
+							cell: ({ row }: { row: { original: PrismaReportCategory } }) => (
+								<div className='text-right'>
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<Button
+												variant='ghost'
+												className='h-8 w-8 p-0'>
+												<span className='sr-only'>Open menu</span>
+												<MoreHorizontal className='h-4 w-4' />
+											</Button>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent align='end'>
+											<DropdownMenuItem onClick={() => handleEdit(row.original)}>
+												<Edit className='mr-2 h-4 w-4' /> Edit
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												onClick={() => handleDelete(row.original.id)}
+												disabled={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+												className='text-red-600 focus:text-red-700 focus:bg-red-50'>
+												<Trash2 className='mr-2 h-4 w-4' /> Delete
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
+								</div>
+							),
+						} as ColumnDef<PrismaReportCategory>,
+				  ]
+				: []),
+		],
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
+	)
 
 	const currentReportCategories = reportCategories || []
+
+	const table = useReactTable({
+		data: currentReportCategories,
+		columns,
+		getCoreRowModel: getCoreRowModel(),
+		onSortingChange: setSorting,
+		getSortedRowModel: getSortedRowModel(),
+		state: { sorting },
+	})
+
+	if (isLoading && !reportCategories) return <div>Loading initial report categories...</div>
+	if (error) return <div className='text-red-600'>Error: {error.message}</div>
 
 	return (
 		<div>
@@ -115,41 +191,40 @@ export function ReportCategoryList({ initialReportCategories }: ReportCategoryLi
 					</Sheet>
 				</div>
 			)}
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Name</TableHead>
-						<TableHead>Description</TableHead>
-						{canModify && <TableHead>Actions</TableHead>}
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{currentReportCategories.map(category => (
-						<TableRow key={category.id}>
-							<TableCell>{category.name}</TableCell>
-							<TableCell>{category.description ?? 'N/A'}</TableCell>
-							{canModify && (
-								<TableCell>
-									<Button
-										variant='ghost'
-										size='sm'
-										onClick={() => handleEdit(category)}>
-										<Edit className='mr-2 h-4 w-4' /> Edit
-									</Button>
-									<Button
-										variant='ghost'
-										size='sm'
-										className='text-red-600 hover:text-red-700'
-										onClick={() => handleDelete(category.id)}
-										disabled={deleteMutation.isPending && deleteMutation.variables === category.id}>
-										<Trash2 className='mr-2 h-4 w-4' /> Delete
-									</Button>
+			<div className='rounded-md border'>
+				<Table>
+					<TableHeader>
+						{table.getHeaderGroups().map(headerGroup => (
+							<TableRow key={headerGroup.id}>
+								{headerGroup.headers.map(header => (
+									<TableHead key={header.id}>{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}</TableHead>
+								))}
+							</TableRow>
+						))}
+					</TableHeader>
+					<TableBody>
+						{table.getRowModel().rows?.length ? (
+							table.getRowModel().rows.map(row => (
+								<TableRow
+									key={row.id}
+									data-state={row.getIsSelected() && 'selected'}>
+									{row.getVisibleCells().map(cell => (
+										<TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+									))}
+								</TableRow>
+							))
+						) : (
+							<TableRow>
+								<TableCell
+									colSpan={columns.length}
+									className='h-24 text-center'>
+									No results.
 								</TableCell>
-							)}
-						</TableRow>
-					))}
-				</TableBody>
-			</Table>
+							</TableRow>
+						)}
+					</TableBody>
+				</Table>
+			</div>
 		</div>
 	)
 }

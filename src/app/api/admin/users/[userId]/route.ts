@@ -1,0 +1,177 @@
+import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth/next'
+import bcrypt from 'bcryptjs'
+import { authOptions } from '@/lib/auth'
+import { db as prisma } from '@/lib/db'
+import { Role } from '@/generated/prisma'
+
+interface Context {
+	params: {
+		userId: string
+	}
+}
+
+/**
+ * GET /api/admin/users/[userId]
+ * Fetches a single user by ID.
+ */
+export async function GET(req: Request, context: Context) {
+	const session = await getServerSession(authOptions)
+	const { userId } = context.params
+
+	if (!session?.user?.role || (session.user.role !== Role.ADMIN && session.user.role !== Role.SUPER_ADMIN)) {
+		return NextResponse.json({ message: 'Forbidden: Insufficient privileges' }, { status: 403 })
+	}
+
+	try {
+		const user = await prisma.user.findUnique({
+			where: { id: userId },
+			select: {
+				id: true,
+				email: true,
+				name: true,
+				role: true,
+				isActive: true,
+				createdAt: true,
+				emailVerified: true,
+			},
+		})
+
+		if (!user) {
+			return NextResponse.json({ message: 'User not found' }, { status: 404 })
+		}
+		return NextResponse.json(user)
+	} catch (error) {
+		console.error(`Failed to fetch user ${userId}:`, error)
+		return NextResponse.json({ message: 'Internal server error' }, { status: 500 })
+	}
+}
+
+/**
+ * PUT /api/admin/users/[userId]
+ * Updates a user.
+ */
+export async function PUT(req: Request, context: Context) {
+	const session = await getServerSession(authOptions)
+	const { userId } = context.params
+
+	if (!session?.user?.id || !session?.user?.role) {
+		return NextResponse.json({ message: 'Not authenticated' }, { status: 401 })
+	}
+
+	const currentUserId = session.user.id
+	const currentUserRole = session.user.role
+
+	if (currentUserRole !== Role.ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
+		return NextResponse.json({ message: 'Forbidden: Insufficient privileges' }, { status: 403 })
+	}
+
+	try {
+		const body = await req.json()
+		const { email, name, role: roleToAssign, isActive, password } = body
+
+		const userToUpdate = await prisma.user.findUnique({ where: { id: userId } })
+		if (!userToUpdate) {
+			return NextResponse.json({ message: 'User not found' }, { status: 404 })
+		}
+
+		// Authorization: Prevent self-deactivation or role change that locks out
+		if (userId === currentUserId) {
+			if (typeof isActive === 'boolean' && !isActive) {
+				return NextResponse.json({ message: 'Cannot deactivate your own account.' }, { status: 403 })
+			}
+			if (roleToAssign && roleToAssign !== currentUserRole) {
+				return NextResponse.json({ message: 'Cannot change your own role.' }, { status: 403 })
+			}
+		}
+
+		// Authorization: Admins cannot modify other Admins or Super Admins
+		if (currentUserRole === Role.ADMIN) {
+			if (userToUpdate.role === Role.ADMIN || userToUpdate.role === Role.SUPER_ADMIN) {
+				if (userId !== currentUserId) { // Admins can modify their own non-critical fields
+					return NextResponse.json({ message: 'Admins cannot modify other Admins or Super Admins.' }, { status: 403 })
+				}
+			}
+			if (roleToAssign === Role.ADMIN || roleToAssign === Role.SUPER_ADMIN) {
+				return NextResponse.json({ message: 'Admins cannot assign Admin or Super Admin roles.' }, { status: 403 })
+			}
+		}
+
+		// Prevent assigning SUPER_ADMIN role by non-SUPER_ADMIN
+		if (roleToAssign === Role.SUPER_ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
+			return NextResponse.json({ message: 'Only Super Admins can assign the Super Admin role.' }, { status: 403 })
+		}
+
+		const updateData: any = {}
+		if (email && email !== userToUpdate.email) {
+			const existingEmailUser = await prisma.user.findUnique({ where: { email } })
+			if (existingEmailUser && existingEmailUser.id !== userId) {
+				return NextResponse.json({ message: 'Email already in use by another account.' }, { status: 409 })
+			}
+			updateData.email = email
+		}
+		if (name) updateData.name = name
+		if (roleToAssign) updateData.role = roleToAssign as Role
+		if (typeof isActive === 'boolean') updateData.isActive = isActive
+		if (password) {
+			updateData.passwordHash = await bcrypt.hash(password, 10)
+		}
+
+		const updatedUser = await prisma.user.update({
+			where: { id: userId },
+			data: updateData,
+			select: { id: true, email: true, name: true, role: true, isActive: true },
+		})
+
+		return NextResponse.json(updatedUser)
+	} catch (error) {
+		console.error(`User update error for ${userId}:`, error)
+		if (error instanceof SyntaxError) {
+			return NextResponse.json({ message: 'Invalid request body.' }, { status: 400 })
+		}
+		return NextResponse.json({ message: 'Internal server error' }, { status: 500 })
+	}
+}
+
+/**
+ * DELETE /api/admin/users/[userId]
+ * Deletes a user.
+ */
+export async function DELETE(req: Request, context: Context) {
+	const session = await getServerSession(authOptions)
+	const { userId } = context.params
+
+	if (!session?.user?.id || !session?.user?.role) {
+		return NextResponse.json({ message: 'Not authenticated' }, { status: 401 })
+	}
+
+	const currentUserId = session.user.id
+	const currentUserRole = session.user.role
+
+	if (currentUserRole !== Role.ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
+		return NextResponse.json({ message: 'Forbidden: Insufficient privileges' }, { status: 403 })
+	}
+
+	if (userId === currentUserId) {
+		return NextResponse.json({ message: 'Cannot delete your own account.' }, { status: 403 })
+	}
+
+	try {
+		const userToDelete = await prisma.user.findUnique({ where: { id: userId } })
+		if (!userToDelete) {
+			return NextResponse.json({ message: 'User not found' }, { status: 404 })
+		}
+
+		// Authorization: Admins cannot delete other Admins or Super Admins
+		if (currentUserRole === Role.ADMIN && (userToDelete.role === Role.ADMIN || userToDelete.role === Role.SUPER_ADMIN)) {
+			return NextResponse.json({ message: 'Admins cannot delete other Admins or Super Admins.' }, { status: 403 })
+		}
+
+		await prisma.user.delete({ where: { id: userId } })
+		return NextResponse.json({ message: 'User deleted successfully' }, { status: 200 })
+	} catch (error) {
+		console.error(`User deletion error for ${userId}:`, error)
+		// Handle potential foreign key constraint errors if user is linked elsewhere and onDelete is Restrict
+		return NextResponse.json({ message: 'Internal server error or user cannot be deleted due to existing relations.' }, { status: 500 })
+	}
+}

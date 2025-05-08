@@ -7,12 +7,24 @@ import { Role } from '@/generated/prisma'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet' // Import Sheet components
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-
-import { PlusCircle, Edit, Trash2 } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { PlusCircle, Edit, Trash2, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner' // Assuming you use sonner for toasts
 import { ItemForm } from './item-form' // Import the new form component
-import { DialogTitle } from '@radix-ui/react-dialog'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+	ColumnDef,
+	flexRender,
+	getCoreRowModel,
+	useReactTable,
+	// To add more features later:
+	getSortedRowModel,
+	SortingState,
+	// getFilteredRowModel,
+	// getPaginationRowModel,
+} from '@tanstack/react-table'
+import React from 'react'
+import { DialogTitle } from '@/components/ui/dialog'
 
 // API interaction functions (could be moved to a service file)
 const fetchItemsAPI = async (): Promise<ItemWithRelations[]> => {
@@ -61,6 +73,7 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 	const [isSheetOpen, setIsSheetOpen] = useState(false) // State for Sheet visibility
 	const [editingItem, setEditingItem] = useState<ItemWithRelations | null>(null)
 	const queryClient = useQueryClient()
+	const [sorting, setSorting] = React.useState<SortingState>([])
 
 	const canModify = session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST
 
@@ -117,13 +130,122 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 		// Queries will be invalidated by the ItemForm's mutation
 	}
 
+	const columns = React.useMemo<ColumnDef<ItemWithRelations>[]>(
+		() => [
+			{
+				accessorKey: 'name',
+				header: ({ column }) => {
+					return (
+						<Button
+							variant='ghost'
+							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+							Name
+							<ArrowUpDown className='ml-2 h-4 w-4' />
+						</Button>
+					)
+				},
+				cell: ({ row }) => row.getValue('name'),
+			},
+			{
+				accessorKey: 'quantity_in_stock',
+				header: ({ column }) => {
+					return (
+						<Button
+							variant='ghost'
+							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+							Stock
+							<ArrowUpDown className='ml-2 h-4 w-4' />
+						</Button>
+					)
+				},
+				cell: ({ row }) => row.getValue('quantity_in_stock'),
+			},
+			{
+				accessorKey: 'price',
+				header: ({ column }) => {
+					return (
+						<Button
+							variant='ghost'
+							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+							Price
+							<ArrowUpDown className='ml-2 h-4 w-4' />
+						</Button>
+					)
+				},
+				cell: ({ row }) => (row.getValue('price') as number).toFixed(2),
+			},
+			{
+				accessorKey: 'expiry_date',
+				header: ({ column }) => {
+					return (
+						<Button
+							variant='ghost'
+							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+							Expiry Date
+							<ArrowUpDown className='ml-2 h-4 w-4' />
+						</Button>
+					)
+				},
+				cell: ({ row }) => {
+					const expiryDate = row.getValue('expiry_date') as string | null
+					return expiryDate ? new Date(expiryDate).toLocaleDateString() : 'N/A'
+				},
+			},
+			...(canModify
+				? [
+						{
+							id: 'actions',
+							header: () => <div className='text-right'>Actions</div>,
+							cell: ({ row }: { row: { original: ItemWithRelations } }) => (
+								<div className='text-right'>
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<Button
+												variant='ghost'
+												className='h-8 w-8 p-0'>
+												<span className='sr-only'>Open menu</span>
+												<MoreHorizontal className='h-4 w-4' />
+											</Button>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent align='end'>
+											<DropdownMenuItem onClick={() => handleEdit(row.original)}>
+												<Edit className='mr-2 h-4 w-4' /> Edit
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												onClick={() => handleDelete(row.original.id)}
+												disabled={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+												className='text-red-600 focus:text-red-700 focus:bg-red-50'>
+												<Trash2 className='mr-2 h-4 w-4' /> Delete
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
+								</div>
+							),
+						} as ColumnDef<ItemWithRelations>, // Type assertion
+				  ]
+				: []),
+		],
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleDelete] // Add dependencies
+	)
+
+	const table = useReactTable({
+		data: items || [],
+		columns,
+		getCoreRowModel: getCoreRowModel(),
+		onSortingChange: setSorting,
+		getSortedRowModel: getSortedRowModel(),
+		state: {
+			sorting,
+		},
+	})
+
 	const isLoading = isLoadingItems || isLoadingRelated
 	const error = itemsError || relatedError
 
 	if (isLoading && !items && !relatedData) return <div>Loading initial data...</div> // Show loading only if no initial data
 	if (error) return <div className='text-red-600'>Error: {error.message}</div>
 
-	const currentItems = items || []
+	// const currentItems = items || []
 	const currentCategories = relatedData?.categories || []
 	const currentSuppliers = relatedData?.suppliers || []
 
@@ -143,7 +265,7 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 						<SheetContent className='w-full overflow-y-auto sm:max-w-xl md:max-w-2xl lg:max-w-3xl'>
 							{' '}
 							{/* Adjust width as needed */}
-							<SheetHeader>
+							<SheetHeader className='mb-4'>
 								<DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
 							</SheetHeader>
 							<ItemForm
@@ -156,47 +278,41 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 					</Sheet>
 				</div>
 			)}
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Name</TableHead>
-						<TableHead>Manufacturer</TableHead>
-						<TableHead>Stock</TableHead>
-						<TableHead>Price</TableHead>
-						<TableHead>Supplier</TableHead>
-						{canModify && <TableHead>Actions</TableHead>}
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{currentItems.map(item => (
-						<TableRow key={item.id}>
-							<TableCell>{item.name}</TableCell>
-							<TableCell>{item.manufacturer ?? 'N/A'}</TableCell>
-							<TableCell>{item.quantity_in_stock}</TableCell>
-							<TableCell>{item.price.toFixed(2)}</TableCell>
-							<TableCell>{item.supplier?.name ?? 'N/A'}</TableCell>
-							{canModify && (
-								<TableCell>
-									<Button
-										variant='ghost'
-										size='sm'
-										onClick={() => handleEdit(item)}>
-										<Edit className='mr-2 h-4 w-4' /> Edit
-									</Button>
-									<Button
-										variant='ghost'
-										size='sm'
-										className='text-red-600 hover:text-red-700'
-										onClick={() => handleDelete(item.id)}
-										disabled={deleteMutation.isPending && deleteMutation.variables === item.id}>
-										<Trash2 className='mr-2 h-4 w-4' /> Delete
-									</Button>
+			<div className='rounded-md border'>
+				<Table>
+					<TableHeader>
+						{table.getHeaderGroups().map(headerGroup => (
+							<TableRow key={headerGroup.id}>
+								{headerGroup.headers.map(header => (
+									<TableHead key={header.id}>{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}</TableHead>
+								))}
+							</TableRow>
+						))}
+					</TableHeader>
+					<TableBody>
+						{table.getRowModel().rows?.length ? (
+							table.getRowModel().rows.map(row => (
+								<TableRow
+									key={row.id}
+									data-state={row.getIsSelected() && 'selected'}>
+									{row.getVisibleCells().map(cell => (
+										<TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+									))}
+								</TableRow>
+							))
+						) : (
+							<TableRow>
+								<TableCell
+									colSpan={columns.length}
+									className='h-24 text-center'>
+									No results.
 								</TableCell>
-							)}
-						</TableRow>
-					))}
-				</TableBody>
-			</Table>
+							</TableRow>
+						)}
+					</TableBody>
+				</Table>
+			</div>
+			{/* TODO: Add pagination controls here if needed */}
 		</div>
 	)
 }

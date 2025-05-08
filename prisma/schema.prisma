@@ -36,6 +36,7 @@ enum PaymentMethod {
 model User {
   id            String    @id @default(cuid()) // Using CUID for unique IDs
   email         String    @unique // Email must be unique for login
+  name          String // Full name of the user
   passwordHash  String // Store the hashed password, never plaintext
   role          Role      @default(CUSTOMER) // Default role is CUSTOMER
   isActive      Boolean   @default(true) // To enable/disable user accounts

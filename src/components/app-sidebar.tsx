@@ -1,10 +1,11 @@
 'use client'
 
 import * as React from 'react'
-import { useSession } from 'next-auth/react' // Import useSession hook
-import { AudioWaveform, LayoutDashboard, Box, Command, GalleryVerticalEnd, Moon, Sun, ChevronsUpDown, FileChartColumnIncreasing, FolderKanban } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { AudioWaveform, LayoutDashboard, Box, Command, GalleryVerticalEnd, Moon, Sun, ChevronsUpDown, FileChartColumnIncreasing, FolderKanban, Users as UsersIcon } from 'lucide-react'
 import { useTheme } from 'next-themes' // Import useTheme
 
+import { Role } from '@/generated/prisma' // Adjust path if necessary
 import { NavMain } from '@/components/nav-main'
 import { NavUser } from '@/components/nav-user'
 import { StoreSwitcher } from '@/components/store-switcher'
@@ -36,10 +37,11 @@ const data = {
 			plan: 'Free',
 		},
 	],
-	navMain: [
+	navMainBase: [
+		// Renamed to avoid conflict if you want to compute navMain dynamically
 		{
 			title: 'Dashboard',
-			url: '#',
+			url: '/',
 			icon: LayoutDashboard,
 			isActive: true,
 		},
@@ -100,6 +102,12 @@ const data = {
 				},
 			],
 		},
+		{
+			title: 'Users',
+			url: '/admin/users',
+			icon: UsersIcon,
+			requiredRoles: [Role.ADMIN, Role.SUPER_ADMIN] as Role[], // Only for Admin and Super Admin
+		},
 		// {
 		// 	title: 'Settings',
 		// 	url: '#',
@@ -121,6 +129,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		avatar: session?.user?.image ?? '', // Auth.js uses 'image' by default
 	}
 
+	// Filter nav items based on user role
+	const filteredNavMain = React.useMemo(() => {
+		if (!session?.user?.role) return [] // Or return a default set for unauthenticated/loading
+		const userRole = session.user.role
+		return data.navMainBase
+			.filter(item => {
+				return !item.requiredRoles || item.requiredRoles.includes(userRole as Role)
+			})
+			.map(item => ({ ...item, isActive: item.url === '#' || (typeof window !== 'undefined' && window.location.pathname.startsWith(item.url)) })) // Basic isActive logic
+	}, [session?.user?.role])
+
 	// Optional: Show skeleton while loading session
 	if (status === 'loading') {
 		return <SidebarSkeleton {...props} /> // Use a skeleton component for loading
@@ -134,7 +153,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 				<StoreSwitcher teams={data.stores} />
 			</SidebarHeader>
 			<SidebarContent>
-				<NavMain items={data.navMain} />
+				<NavMain items={filteredNavMain} />
 			</SidebarContent>
 			<SidebarFooter>
 				{/* Theme Switcher integrated as a SidebarMenuItem */}

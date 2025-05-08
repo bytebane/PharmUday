@@ -1,5 +1,6 @@
 'use client'
 import { signOut } from 'next-auth/react' // Import signOut
+import Link from 'next/link' // Import Link from next/link
 
 import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Sparkles } from 'lucide-react'
 
@@ -69,9 +70,12 @@ export function NavUser({
 						</DropdownMenuGroup>
 						<DropdownMenuSeparator />
 						<DropdownMenuGroup>
-							<DropdownMenuItem>
-								<BadgeCheck />
-								Account
+							{/* Updated Account DropdownMenuItem to link to /account */}
+							<DropdownMenuItem asChild>
+								<Link href='/account'>
+									<BadgeCheck className='mr-2 h-4 w-4' /> {/* Added margin for spacing */}
+									<span>Account</span>
+								</Link>
 							</DropdownMenuItem>
 							<DropdownMenuItem>
 								<CreditCard />

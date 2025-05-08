@@ -19,6 +19,9 @@ declare module 'next-auth' {
 			// Make sure user object in session includes the role
 			id: string // Add id to the session user
 			role: Role // Add role to the session user type
+			name: string // Add name to the session user type
+			email: string // Add email to the session user type
+			image?: string // Optional image field
 		}
 	}
 }
