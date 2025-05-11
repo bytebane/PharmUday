@@ -18,15 +18,21 @@ import {
 	getCoreRowModel,
 	useReactTable,
 	// To add more features later:
+	FilterFn,
 	getSortedRowModel,
 	SortingState,
-	// getFilteredRowModel,
+	getFilteredRowModel,
+	ColumnFiltersState,
+	getFacetedRowModel, // Useful for some filter scenarios
+	// getFacetedRowModel,
 	// getPaginationRowModel,
 } from '@tanstack/react-table'
 import React from 'react'
 import { DialogTitle } from '@/components/ui/dialog'
 
 // API interaction functions (could be moved to a service file)
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 const fetchItemsAPI = async (): Promise<ItemWithRelations[]> => {
 	const response = await fetch('/api/inv-items')
 	if (!response.ok) {
@@ -73,6 +79,8 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 	const [isSheetOpen, setIsSheetOpen] = useState(false) // State for Sheet visibility
 	const [editingItem, setEditingItem] = useState<ItemWithRelations | null>(null)
 	const queryClient = useQueryClient()
+	const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
+	const [globalFilter, setGlobalFilter] = React.useState('')
 	const [sorting, setSorting] = React.useState<SortingState>([])
 
 	const canModify = session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST
@@ -108,28 +116,42 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 		},
 	})
 
-	const handleEdit = (item: ItemWithRelations) => {
+	const handleEdit = React.useCallback((item: ItemWithRelations) => {
 		setEditingItem(item)
-		setIsSheetOpen(true) // Open sheet for editing
-	}
+		setIsSheetOpen(true)
+	}, [])
 
-	const handleAddNew = () => {
+	const handleAddNew = React.useCallback(() => {
 		setEditingItem(null)
-		setIsSheetOpen(true) // Open sheet for adding
-	}
+		setIsSheetOpen(true)
+	}, [])
 
-	const handleDelete = async (id: string) => {
-		if (!confirm('Are you sure you want to delete this item?')) return
-		deleteMutation.mutate(id)
-	}
+	const handleDelete = React.useCallback(
+		(id: string) => {
+			if (!confirm('Are you sure you want to delete this item?')) return
+			deleteMutation.mutate(id)
+		},
+		[deleteMutation]
+	)
 
 	// This function will be called by ItemForm on successful submission
-	const handleFormSuccess = () => {
+	const handleFormSuccess = React.useCallback(() => {
 		setIsSheetOpen(false) // Close sheet on success
 		setEditingItem(null) // Reset editing item
 		// Queries will be invalidated by the ItemForm's mutation
-	}
+	}, [])
 
+	const globalFilterFn: FilterFn<ItemWithRelations> = React.useCallback((row, columnId, filterValue) => {
+		const searchTerm = String(filterValue).toLowerCase()
+		if (!searchTerm) return true
+
+		const name = String(row.original.name).toLowerCase()
+		const genericName = String(row.original.generic_name || '').toLowerCase()
+		const manufacturer = String(row.original.manufacturer || '').toLowerCase()
+		const description = String(row.original.description || '').toLowerCase()
+
+		return name.includes(searchTerm) || genericName.includes(searchTerm) || manufacturer.includes(searchTerm) || description.includes(searchTerm)
+	}, [])
 	const columns = React.useMemo<ColumnDef<ItemWithRelations>[]>(
 		() => [
 			{
@@ -144,28 +166,48 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 						</Button>
 					)
 				},
-				cell: ({ row }) => row.getValue('name'),
+				cell: ({ row }) => <div className='font-medium'>{row.getValue('name')}</div>,
+			},
+			{
+				accessorKey: 'generic_name',
+				header: 'Generic Name',
+			},
+			{
+				accessorKey: 'categories',
+				header: 'Categories',
+				cell: ({ row }) => row.original.categories.map(cat => cat.name).join(', ') || 'N/A',
+				filterFn: (row, columnId, filterValue) => {
+					if (!filterValue) return true
+					return row.original.categories.some(cat => cat.id === filterValue)
+				},
+				enableSorting: false,
+			},
+			{
+				accessorKey: 'supplierId', // Used for filtering
+				header: 'Supplier',
+				cell: ({ row }) => row.original.supplier?.name || 'N/A',
+				filterFn: (row, columnId, filterValue) => {
+					if (!filterValue) return true
+					return row.original.supplierId === filterValue
+				},
+				enableSorting: false,
 			},
 			{
 				accessorKey: 'quantity_in_stock',
-				header: ({ column }) => {
-					return (
-						<Button
-							variant='ghost'
-							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-							Stock
-							<ArrowUpDown className='ml-2 h-4 w-4' />
-						</Button>
-					)
+				header: 'Stock',
+				filterFn: (row, columnId, filterValue) => {
+					if (filterValue === 'out_of_stock') {
+						return row.original.quantity_in_stock <= 0
+					}
+					return true
 				},
-				cell: ({ row }) => row.getValue('quantity_in_stock'),
 			},
 			{
 				accessorKey: 'price',
 				header: ({ column }) => {
 					return (
 						<Button
-							variant='ghost'
+							variant='outline'
 							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
 							Price
 							<ArrowUpDown className='ml-2 h-4 w-4' />
@@ -179,16 +221,31 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 				header: ({ column }) => {
 					return (
 						<Button
-							variant='ghost'
+							variant='outline'
 							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
 							Expiry Date
 							<ArrowUpDown className='ml-2 h-4 w-4' />
 						</Button>
 					)
 				},
-				cell: ({ row }) => {
-					const expiryDate = row.getValue('expiry_date') as string | null
-					return expiryDate ? new Date(expiryDate).toLocaleDateString() : 'N/A'
+				cell: ({ row }) => (row.getValue('expiry_date') ? new Date(row.getValue('expiry_date') as string).toLocaleDateString() : 'N/A'),
+				filterFn: (row, columnId, filterValue) => {
+					const expiryDate = row.original.expiry_date ? new Date(row.original.expiry_date) : null
+					if (!filterValue || filterValue === 'all') return true
+					if (!expiryDate && (filterValue === 'expired' || filterValue === 'expiring_soon')) return false
+
+					const today = new Date()
+					today.setHours(0, 0, 0, 0)
+
+					if (filterValue === 'expired' && expiryDate) {
+						return expiryDate < today
+					}
+					if (filterValue === 'expiring_soon' && expiryDate) {
+						const thirtyDaysFromNow = new Date(today)
+						thirtyDaysFromNow.setDate(today.getDate() + 30)
+						return expiryDate >= today && expiryDate <= thirtyDaysFromNow
+					}
+					return true
 				},
 			},
 			...(canModify
@@ -225,7 +282,7 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 				  ]
 				: []),
 		],
-		[canModify, deleteMutation.isPending, deleteMutation.variables, handleDelete] // Add dependencies
+		[canModify, deleteMutation, handleEdit, handleDelete] // Add dependencies
 	)
 
 	const table = useReactTable({
@@ -234,10 +291,22 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 		getCoreRowModel: getCoreRowModel(),
 		onSortingChange: setSorting,
 		getSortedRowModel: getSortedRowModel(),
+		getFilteredRowModel: getFilteredRowModel(),
+		getFacetedRowModel: getFacetedRowModel(),
+		globalFilterFn: globalFilterFn,
 		state: {
 			sorting,
+			columnFilters,
+			globalFilter,
 		},
+		onColumnFiltersChange: setColumnFilters,
+		onGlobalFilterChange: setGlobalFilter,
 	})
+
+	const isFiltered = React.useMemo(() => table.getState().columnFilters.length > 0 || !!table.getState().globalFilter, [table.getState().columnFilters, table.getState().globalFilter])
+	// To get the count of visible columns, use getVisibleLeafColumns()
+	// const visibleColumnCount = table.getVisibleLeafColumns().length
+	// console.log('Visible column count:', visibleColumnCount)
 
 	const isLoading = isLoadingItems || isLoadingRelated
 	const error = itemsError || relatedError
@@ -251,6 +320,88 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 
 	return (
 		<div>
+			{/* Filters Toolbar */}
+			<div className='mb-4 flex flex-wrap items-center gap-2 rounded-md border p-4'>
+				<Input
+					placeholder='Search (name, desc, generic, mfg)...'
+					value={globalFilter ?? ''}
+					onChange={event => setGlobalFilter(event.target.value)}
+					className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-xs'
+				/>
+				<Select
+					value={(table.getColumn('categories')?.getFilterValue() as string) ?? 'all'}
+					onValueChange={value => table.getColumn('categories')?.setFilterValue(value === 'all' ? undefined : value)}>
+					<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
+						<SelectValue placeholder='Filter by Category' />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value='all'>All Categories</SelectItem>
+						{currentCategories.map(category => (
+							<SelectItem
+								key={category.id}
+								value={category.id}>
+								{category.name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+
+				<Select
+					value={(table.getColumn('supplierId')?.getFilterValue() as string) ?? 'all'}
+					onValueChange={value => table.getColumn('supplierId')?.setFilterValue(value === 'all' ? undefined : value)}>
+					<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
+						<SelectValue placeholder='Filter by Supplier' />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value='all'>All Suppliers</SelectItem>
+						{currentSuppliers.map(supplier => (
+							<SelectItem
+								key={supplier.id}
+								value={supplier.id}>
+								{supplier.name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+
+				<Select
+					value={(table.getColumn('quantity_in_stock')?.getFilterValue() as string) ?? 'all'}
+					onValueChange={value => table.getColumn('quantity_in_stock')?.setFilterValue(value === 'all' ? undefined : value)}>
+					<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
+						<SelectValue placeholder='Stock Status' />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value='all'>All Stock Status</SelectItem>
+						<SelectItem value='out_of_stock'>Out of Stock</SelectItem>
+						{/* Add "Low Stock" if reorder_level is consistently used */}
+					</SelectContent>
+				</Select>
+
+				<Select
+					value={(table.getColumn('expiry_date')?.getFilterValue() as string) ?? 'all'}
+					onValueChange={value => table.getColumn('expiry_date')?.setFilterValue(value === 'all' ? undefined : value)}>
+					<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
+						<SelectValue placeholder='Expiry Status' />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value='all'>All Expiry Status</SelectItem>
+						<SelectItem value='expiring_soon'>Expiring Soon (30d)</SelectItem>
+						<SelectItem value='expired'>Expired</SelectItem>
+					</SelectContent>
+				</Select>
+
+				{isFiltered && (
+					<Button
+						variant='ghost'
+						onClick={() => {
+							table.resetColumnFilters()
+							setGlobalFilter('')
+						}}
+						className='h-10'>
+						Reset
+					</Button>
+				)}
+			</div>
 			{canModify && (
 				<div className='mb-4 flex justify-end'>
 					{/* Replace Dialog with Sheet */}

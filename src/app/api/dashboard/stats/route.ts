@@ -1,35 +1,83 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { startOfDay, endOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear, addDays } from 'date-fns'
+import { db } from '@/lib/db' // Your Prisma client
+import { getCurrentUser } from '@/lib/auth' // Your authentication helper
+import { Role } from '@/generated/prisma' // Your Role enum
 
-import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
-import { Role } from '@/generated/prisma'
-
-export async function GET(req: Request) {
-	const session = await getServerSession(authOptions)
-
-	if (!session?.user?.id || !session.user.role) {
-		return NextResponse.json({ message: 'Not authenticated' }, { status: 401 })
+// Define the expected structure for the stats, matching your frontend DashboardStats interface
+interface DashboardStats {
+	itemStats: {
+		expiringSoonCount: number
+		outOfStockCount: number
+		totalItemCount: number
 	}
-
-	// Define roles that can access dashboard stats
-	const allowedRoles: Role[] = [Role.SUPER_ADMIN, Role.ADMIN, Role.PHARMACIST, Role.SELLER]
-	if (!allowedRoles.includes(session.user.role as Role)) {
-		return NextResponse.json({ message: 'Forbidden: Insufficient privileges' }, { status: 403 })
+	salesStats: {
+		today: { totalAmount: number; transactionCount: number }
+		thisMonth: { totalAmount: number; transactionCount: number }
+		thisYear: { totalAmount: number; transactionCount: number }
 	}
+	totalCustomerCount: number
+	allTimeSales: { totalAmount: number; transactionCount: number }
+}
 
+export async function GET() {
 	try {
-		const now = new Date()
+		const user = await getCurrentUser()
+		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
+			return new NextResponse('Unauthorized', { status: 401 })
+		}
 
-		// --- Item Statistics ---
-		const thirtyDaysFromNow = addDays(now, 30)
+		// --- Helper functions for date ranges ---
+		const getTodayRange = () => {
+			const start = new Date()
+			start.setHours(0, 0, 0, 0)
+			const end = new Date(start)
+			end.setDate(start.getDate() + 1)
+			return { start, end }
+		}
+
+		const getThisMonthRange = () => {
+			const now = new Date()
+			const start = new Date(now.getFullYear(), now.getMonth(), 1)
+			const end = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+			return { start, end }
+		}
+
+		const getThisYearRange = () => {
+			const now = new Date()
+			const start = new Date(now.getFullYear(), 0, 1)
+			const end = new Date(now.getFullYear() + 1, 0, 1)
+			return { start, end }
+		}
+
+		const todayRange = getTodayRange()
+		const thisMonthRange = getThisMonthRange()
+		const thisYearRange = getThisYearRange()
+
+		// --- Calculate All Time Sales ---
+		const allTimeSalesData = await db.sale.aggregate({
+			_sum: {
+				grandTotal: true,
+			},
+			_count: {
+				id: true, // Counting by 'id' or any non-null field like _all: true
+			},
+		})
+
+		const allTimeSalesStats = {
+			totalAmount: allTimeSalesData._sum.grandTotal || 0,
+			transactionCount: allTimeSalesData._count.id || 0,
+		}
+
+		// --- Calculate Item Stats ---
+		const totalItemCount = await db.item.count()
+
+		const thirtyDaysFromNow = new Date()
+		thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
 		const expiringSoonCount = await db.item.count({
 			where: {
-				isActive: true,
 				expiry_date: {
-					gte: now, // Still valid
-					lte: thirtyDaysFromNow, // Expiring within 30 days
+					gte: new Date(), // Items expiring from today onwards
+					lte: thirtyDaysFromNow, // Up to 30 days from now
 				},
 				quantity_in_stock: {
 					gt: 0, // Only count if in stock
@@ -39,81 +87,56 @@ export async function GET(req: Request) {
 
 		const outOfStockCount = await db.item.count({
 			where: {
-				isActive: true,
-				quantity_in_stock: {
-					lte: 0,
-				},
+				quantity_in_stock: 0,
 			},
 		})
 
-		// --- Sales Statistics ---
-		// Today's Sales
-		const todayStart = startOfDay(now)
-		const todayEnd = endOfDay(now)
-		const salesToday = await db.sale.aggregate({
-			_sum: { grandTotal: true },
-			_count: { id: true },
-			where: {
-				saleDate: {
-					gte: todayStart,
-					lte: todayEnd,
-				},
-				paymentStatus: 'PAID', // Consider only paid sales for revenue
-			},
-		})
+		const itemStats = {
+			expiringSoonCount: expiringSoonCount,
+			outOfStockCount: outOfStockCount,
+			totalItemCount: totalItemCount,
+		}
 
-		// This Month's Sales
-		const monthStart = startOfMonth(now)
-		const monthEnd = endOfMonth(now)
-		const salesThisMonth = await db.sale.aggregate({
-			_sum: { grandTotal: true },
-			_count: { id: true },
-			where: {
-				saleDate: {
-					gte: monthStart,
-					lte: monthEnd,
+		// --- Calculate Periodic Sales Stats ---
+		const calculateSalesForPeriod = async (startDate: Date, endDate: Date) => {
+			const salesData = await db.sale.aggregate({
+				where: {
+					saleDate: {
+						gte: startDate,
+						lt: endDate,
+					},
 				},
-				paymentStatus: 'PAID',
-			},
-		})
+				_sum: { grandTotal: true },
+				_count: { id: true },
+			})
+			return {
+				totalAmount: salesData._sum.grandTotal || 0,
+				transactionCount: salesData._count.id || 0,
+			}
+		}
 
-		// This Year's Sales
-		const yearStart = startOfYear(now)
-		const yearEnd = endOfYear(now)
-		const salesThisYear = await db.sale.aggregate({
-			_sum: { grandTotal: true },
-			_count: { id: true },
-			where: {
-				saleDate: {
-					gte: yearStart,
-					lte: yearEnd,
-				},
-				paymentStatus: 'PAID',
-			},
-		})
+		const salesToday = await calculateSalesForPeriod(todayRange.start, todayRange.end)
+		const salesThisMonth = await calculateSalesForPeriod(thisMonthRange.start, thisMonthRange.end)
+		const salesThisYear = await calculateSalesForPeriod(thisYearRange.start, thisYearRange.end)
 
-		return NextResponse.json({
-			itemStats: {
-				expiringSoonCount,
-				outOfStockCount,
-			},
-			salesStats: {
-				today: {
-					totalAmount: salesToday._sum.grandTotal || 0,
-					transactionCount: salesToday._count.id || 0,
-				},
-				thisMonth: {
-					totalAmount: salesThisMonth._sum.grandTotal || 0,
-					transactionCount: salesThisMonth._count.id || 0,
-				},
-				thisYear: {
-					totalAmount: salesThisYear._sum.grandTotal || 0,
-					transactionCount: salesThisYear._count.id || 0,
-				},
-			},
-		})
+		const salesStats = {
+			today: salesToday,
+			thisMonth: salesThisMonth,
+			thisYear: salesThisYear,
+		}
+
+		const totalCustomerCount = await db.customer.count()
+
+		const stats: DashboardStats = {
+			itemStats: itemStats,
+			salesStats: salesStats,
+			totalCustomerCount: totalCustomerCount,
+			allTimeSales: allTimeSalesStats, // Include the calculated all-time sales
+		}
+
+		return NextResponse.json(stats)
 	} catch (error) {
-		console.error('Failed to fetch dashboard stats:', error)
-		return NextResponse.json({ message: 'Internal server error' }, { status: 500 })
+		console.error('[API_DASHBOARD_STATS_ERROR]', error)
+		return NextResponse.json({ message: 'Internal Server Error', error: error instanceof Error ? error.message : String(error) }, { status: 500 })
 	}
 }

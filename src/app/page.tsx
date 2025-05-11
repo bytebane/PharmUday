@@ -58,12 +58,15 @@ interface DashboardStats {
 	itemStats: {
 		expiringSoonCount: number
 		outOfStockCount: number
+		totalItemCount: number // <-- Add this line
 	}
 	salesStats: {
 		today: { totalAmount: number; transactionCount: number }
 		thisMonth: { totalAmount: number; transactionCount: number }
 		thisYear: { totalAmount: number; transactionCount: number }
 	}
+	totalCustomerCount: number // <-- Add this line
+	allTimeSales: { totalAmount: number; transactionCount: number } // <-- Add this line
 }
 
 async function getDashboardStats(): Promise<DashboardStats | null> {
@@ -73,7 +76,7 @@ async function getDashboardStats(): Promise<DashboardStats | null> {
 		const response = await fetch(`${baseUrl}/api/dashboard/stats`, {
 			method: 'GET',
 			headers: {
-				cookie: headers().get('cookie') || '', // Pass along cookies for authentication
+				cookie: (await headers()).get('cookie') || '', // Pass along cookies for authentication
 				'Content-Type': 'application/json',
 			},
 			cache: 'no-store', // Ensure fresh data for dashboard
@@ -98,12 +101,11 @@ export default async function DashboardPage() {
 			<div className='container mx-auto p-4 md:p-8'>
 				<h1 className='mb-6 text-3xl font-bold'>Dashboard</h1>
 				<p className='text-destructive'>Could not load dashboard statistics. Please try again later.</p>
-				{/* Optionally, show skeleton cards in error state too or a more specific error UI */}
 			</div>
 		)
 	}
 
-	const { itemStats, salesStats } = stats
+	const { itemStats, salesStats, totalCustomerCount, allTimeSales } = stats
 
 	return (
 		<div className='container mx-auto p-4 md:p-8'>
@@ -126,6 +128,12 @@ export default async function DashboardPage() {
 					link='/inventory/items?status=out_of_stock'
 					linkText='View Items'
 				/>
+				<StatCard
+					title='Total Items'
+					value={itemStats.totalItemCount}
+					icon={Package}
+					description='Overall item count'
+				/>
 
 				{/* Sales Stats */}
 				<StatCard
@@ -146,34 +154,19 @@ export default async function DashboardPage() {
 					icon={CalendarRange}
 					description={`${salesStats.thisYear.transactionCount} transactions`}
 				/>
-
-				{/* Placeholder for more cards */}
 				<StatCard
-					title='Total Items'
-					value={'N/A'}
-					icon={Package}
-					description='Overall item count'
-				/>
-				<StatCard
-					title='Recent Orders'
-					value={'N/A'}
-					icon={ShoppingCart}
-					description='Last 5 orders'
-				/>
-				<StatCard
-					title='Top Selling'
-					value={'N/A'}
+					title='All-Time Sales'
+					value={`$${allTimeSales.totalAmount.toFixed(2)}`}
 					icon={TrendingUp}
-					description='Most popular items'
+					description={`${allTimeSales.transactionCount} transactions`}
+				/>
+				<StatCard
+					title='Total Customers'
+					value={totalCustomerCount}
+					icon={ShoppingCart}
+					description='Registered customers'
 				/>
 			</div>
-
-			{/* TODO: Add charts or more detailed sections below */}
-			{/* <div className="mt-8">
-                <h2 className="text-2xl font-semibold mb-4">Sales Overview</h2>
-                {/* Placeholder for a chart component */}
-			{/* <div className="p-4 border rounded-lg bg-card text-card-foreground h-64 flex items-center justify-center">Chart Placeholder</div>
-            </div> */}
 		</div>
 	)
 }
