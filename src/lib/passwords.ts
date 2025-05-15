@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 
 const saltRounds = 10 // Adjust salt rounds based on security needs and performance
 
