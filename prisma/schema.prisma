@@ -309,10 +309,9 @@ model SaleItem {
 
 // Model for the Bill/Invoice generated for a Sale
 model Invoice {
-  id            String   @id @default(cuid())
-  invoiceNumber String   @unique // Auto-generated or system-defined unique invoice number
-  issuedDate    DateTime @default(now())
-  status        String   @default("DRAFT") // e.g., DRAFT, ISSUED, PAID, CANCELLED, VOIDED
+  id            String  @id @default(cuid())
+  invoiceNumber Int     @unique @default(autoincrement()) // Auto-generated or system-defined unique invoice number
+  status        String  @default("DRAFT") // e.g., DRAFT, ISSUED, PAID, CANCELLED, VOIDED
   notes         String? // Additional notes specific to the invoice
 
   saleId String @unique // One-to-one relation with Sale
