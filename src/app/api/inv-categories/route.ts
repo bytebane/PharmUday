@@ -4,26 +4,38 @@ import { Prisma } from '@/generated/prisma' // Import Prisma types if needed for
 
 import { db } from '@/lib/db'
 import { categorySchema } from '@/lib/validations/category'
-import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
+import { authorize } from '@/lib/utils/auth-utils'
 
-export async function GET() {
+const paginationSchema = z.object({
+	page: z.coerce.number().min(1).default(1),
+	limit: z.coerce.number().min(1).max(100).default(10),
+	search: z.string().optional(),
+})
+
+export async function GET(req: Request) {
 	try {
-		// Fetch categories, potentially including hierarchy
-		const categories = await db.category.findMany({
-			orderBy: {
-				name: 'asc',
-			},
-			include: {
-				// Include subcategories or parent category if needed for display
-				// subCategories: true,
-				// parentCategory: true,
-			},
-		})
+		const url = new URL(req.url)
+		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
+		const { page, limit, search } = params
 
-		// You might want to process the flat list into a hierarchical structure here if needed
+		const where: any = {}
+		if (search) {
+			where.OR = [{ name: { contains: search, mode: 'insensitive' } }, { description: { contains: search, mode: 'insensitive' } }]
+		}
 
-		return NextResponse.json(categories)
+		const [categories, total] = await Promise.all([
+			db.category.findMany({
+				where,
+				include: { parentCategory: { select: { id: true, name: true } } },
+				orderBy: { name: 'asc' },
+				skip: (page - 1) * limit,
+				take: limit,
+			}),
+			db.category.count({ where }),
+		])
+
+		return NextResponse.json({ categories, total })
 	} catch (error) {
 		console.error('[CATEGORIES_GET]', error)
 		return new NextResponse('Internal Server Error', { status: 500 })
@@ -32,10 +44,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
 	try {
-		const user = await getCurrentUser()
-
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
+		const authResult = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (authResult.response) {
+			return authResult.response
 		}
 		const json = await req.json()
 		const body = categorySchema.parse(json)

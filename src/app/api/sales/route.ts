@@ -6,29 +6,69 @@ import { Role } from '@/generated/prisma'
 import { saleCreateSchema } from '@/lib/validations/sale'
 import { Prisma } from '@/generated/prisma' // Import Prisma for types
 
-export async function GET() {
-	try {
-		const user = await getCurrentUser()
-		if (!user) return new NextResponse('Unauthorized', { status: 401 })
+const paginationSchema = z.object({
+	page: z.coerce.number().min(1).default(1),
+	limit: z.coerce.number().min(1).max(100).default(10),
+	search: z.string().optional(),
+	period: z.enum(['today', 'this_month', 'this_year', 'all_time']).optional(),
+})
 
-		// Allow admins/pharmacists to see all sales, others only their own (if applicable)
-		// For now, let's assume authorized users can see all sales for simplicity in a pharmacy context
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
+function getPeriodRange(period: string) {
+	const now = new Date()
+	if (period === 'today') {
+		const start = new Date(now)
+		start.setHours(0, 0, 0, 0)
+		const end = new Date(start)
+		end.setDate(start.getDate() + 1)
+		return { gte: start, lt: end }
+	}
+	if (period === 'this_month') {
+		const start = new Date(now.getFullYear(), now.getMonth(), 1)
+		const end = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+		return { gte: start, lt: end }
+	}
+	if (period === 'this_year') {
+		const start = new Date(now.getFullYear(), 0, 1)
+		const end = new Date(now.getFullYear() + 1, 0, 1)
+		return { gte: start, lt: end }
+	}
+	return undefined
+}
+
+export async function GET(req: Request) {
+	try {
+		const url = new URL(req.url)
+		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
+		const { page, limit, search, period } = params
+
+		const where: any = {}
+
+		if (search) {
+			where.OR = [{ invoice: { id: { contains: search, mode: 'insensitive' } } }, { customer: { name: { contains: search, mode: 'insensitive' } } }, { staff: { email: { contains: search, mode: 'insensitive' } } }]
 		}
 
-		const sales = await db.sale.findMany({
-			include: {
-				staff: { select: { id: true, email: true } },
-				customer: { select: { id: true, name: true } },
-				saleItems: { include: { item: { select: { id: true, name: true } } } },
-				invoice: true,
-			},
-			orderBy: { saleDate: 'desc' },
-		})
-		return NextResponse.json(sales)
+		if (period && period !== 'all_time') {
+			where.saleDate = getPeriodRange(period)
+		}
+
+		const [sales, total] = await Promise.all([
+			db.sale.findMany({
+				where,
+				include: {
+					invoice: true,
+					customer: true,
+					staff: true,
+				},
+				orderBy: { saleDate: 'desc' },
+				skip: (page - 1) * limit,
+				take: limit,
+			}),
+			db.sale.count({ where }),
+		])
+
+		return NextResponse.json({ sales, total })
 	} catch (error) {
-		console.error('[SALES_GET_LIST]', error)
+		console.error('[SALES_GET]', error)
 		return new NextResponse('Internal Server Error', { status: 500 })
 	}
 }
@@ -112,12 +152,12 @@ export async function POST(req: NextRequest) {
 
 			// 5. Create Invoice record
 			// Simple invoice number generation, consider a more robust system
-			const invoiceNumber = `INV-${new Date().getFullYear()}-${String(newSale.id).substring(0, 6).toUpperCase()}`
+			// const invoiceNumber = `INV-${new Date().getFullYear()}-${String(newSale.id).substring(0, 6).toUpperCase()}`
 			await prisma.invoice.create({
 				data: {
 					saleId: newSale.id,
-					invoiceNumber: invoiceNumber,
-					issuedDate: new Date(),
+					// invoiceNumber: invoiceNumber,
+					// createdAt: new Date(),
 					status: 'ISSUED', // Or 'PAID' if paymentStatus is PAID
 				},
 			})

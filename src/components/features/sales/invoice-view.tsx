@@ -1,6 +1,6 @@
 'use client'
 
-import { SaleWithFullDetails } from '@/app/sales/[id]/page' // Import the detailed type
+import { SaleWithFullDetails } from '@/app/(main)/sales/[id]/page' // Import the detailed type
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { format } from 'date-fns'
@@ -19,7 +19,7 @@ export function InvoiceView({ saleDetails }: InvoiceViewProps) {
 	const { invoice, customer, staff, saleItems, saleDate, subTotal, totalDiscount, totalTax, grandTotal, paymentMethod } = saleDetails
 
 	return (
-		<div className='bg-white p-8 shadow-lg rounded-lg max-w-4xl mx-auto print-area'>
+		<div className='bg-white p-8 shadow-lg rounded-lg max-w-4xl mx-auto print-area text-black'>
 			<style
 				jsx
 				global>{`
@@ -46,8 +46,8 @@ export function InvoiceView({ saleDetails }: InvoiceViewProps) {
 			<div className='flex justify-between items-start mb-8'>
 				<div>
 					<h1 className='text-3xl font-bold text-gray-800'>Invoice</h1>
-					<p className='text-gray-600'>Invoice #: {invoice?.invoiceNumber || 'N/A'}</p>
-					<p className='text-gray-600'>Date: {format(new Date(invoice?.issuedDate || saleDate), 'PPP')}</p>
+					<p className='text-gray-600'>Invoice #: {invoice?.id || 'N/A'}</p>
+					<p className='text-gray-600'>Date: {format(new Date(invoice?.createdAt || saleDate), 'PPP')}</p>
 				</div>
 				<div className='text-right'>
 					<h2 className='text-xl font-semibold text-gray-700'>Your Pharmacy Name</h2>
@@ -72,24 +72,24 @@ export function InvoiceView({ saleDetails }: InvoiceViewProps) {
 
 			<Table className='mb-8'>
 				<TableHeader>
-					<TableRow className='bg-gray-100'>
-						<TableHead className='w-[50px]'>#</TableHead>
-						<TableHead>Item Description</TableHead>
-						<TableHead className='text-right'>Qty</TableHead>
-						<TableHead className='text-right'>Unit Price</TableHead>
-						<TableHead className='text-right'>Total</TableHead>
+					<TableRow className='bg-slate-200'>
+						<TableHead className='w-[50px] text-slate-800'>#</TableHead>
+						<TableHead className='text-slate-800'>Item Description</TableHead>
+						<TableHead className='text-right text-slate-800'>Qty</TableHead>
+						<TableHead className='text-right text-slate-800'>Unit Price</TableHead>
+						<TableHead className='text-right text-slate-800'>Total</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
 					{saleItems.map((sItem, index) => (
-						<TableRow key={sItem.id || index}>
+						<TableRow key={index}>
 							<TableCell>{index + 1}</TableCell>
 							<TableCell>
-								{sItem.item.name} {sItem.item.strength && `(${sItem.item.strength})`}
+								{sItem.item.name} {sItem.item.strength && `(${sItem.item.strength})`}{' '}
 							</TableCell>
 							<TableCell className='text-right'>{sItem.quantitySold}</TableCell>
-							<TableCell className='text-right'>{sItem.priceAtSale.toFixed(2)}</TableCell>
-							<TableCell className='text-right'>{sItem.totalPrice.toFixed(2)}</TableCell>
+							<TableCell className='text-right'>₹{sItem.priceAtSale.toFixed(2)}</TableCell>
+							<TableCell className='text-right'>₹{sItem.totalPrice.toFixed(2)}</TableCell>
 						</TableRow>
 					))}
 				</TableBody>
@@ -98,20 +98,20 @@ export function InvoiceView({ saleDetails }: InvoiceViewProps) {
 			<div className='flex justify-end mb-8'>
 				<div className='w-full max-w-xs space-y-2'>
 					<div className='flex justify-between'>
-						<span className='text-gray-600'>Subtotal:</span> <span>{subTotal.toFixed(2)}</span>
+						<span className='text-gray-600'>Subtotal:</span>
+						<span>₹{subTotal.toFixed(2)}</span>
 					</div>
-					{totalDiscount > 0 && (
-						<div className='flex justify-between'>
-							<span className='text-gray-600'>Discount:</span> <span>- {totalDiscount.toFixed(2)}</span>
-						</div>
-					)}
-					{totalTax > 0 && (
-						<div className='flex justify-between'>
-							<span className='text-gray-600'>Tax:</span> <span>+ {totalTax.toFixed(2)}</span>
-						</div>
-					)}
+					<div className='flex justify-between'>
+						<span className='text-gray-600'>Discount:</span>
+						<span>- ₹{totalDiscount.toFixed(2)}</span>
+					</div>
+					<div className='flex justify-between'>
+						<span className='text-gray-600'>Tax:</span>
+						<span>+ ₹{totalTax.toFixed(2)}</span>
+					</div>
 					<div className='flex justify-between font-bold text-xl border-t pt-2 mt-2'>
-						<span className='text-gray-800'>Grand Total:</span> <span>{grandTotal.toFixed(2)}</span>
+						<span className='text-gray-800'>Grand Total:</span>
+						<span>₹{grandTotal.toFixed(2)}</span>
 					</div>
 				</div>
 			</div>

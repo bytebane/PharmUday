@@ -5,20 +5,36 @@ import { customerSchema } from '@/lib/validations/customer'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
 
-export async function GET() {
+const paginationSchema = z.object({
+	page: z.coerce.number().min(1).default(1),
+	limit: z.coerce.number().min(1).max(100).default(10),
+	search: z.string().optional(),
+})
+
+export async function GET(req: Request) {
 	try {
-		// Optional: Add authorization if needed to view customers
-		const user = await getCurrentUser()
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
+		const url = new URL(req.url)
+		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
+		const { page, limit, search } = params
+
+		const where: any = {}
+		if (search) {
+			where.OR = [{ name: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }, { phone: { contains: search, mode: 'insensitive' } }]
 		}
 
-		const customers = await db.customer.findMany({
-			orderBy: { name: 'asc' },
-		})
-		return NextResponse.json(customers)
+		const [customers, total] = await Promise.all([
+			db.customer.findMany({
+				where,
+				orderBy: { createdAt: 'desc' },
+				skip: (page - 1) * limit,
+				take: limit,
+			}),
+			db.customer.count({ where }),
+		])
+
+		return NextResponse.json({ customers, total })
 	} catch (error) {
-		console.error('[CUSTOMERS_GET_LIST]', error)
+		console.error('[CUSTOMERS_GET]', error)
 		return new NextResponse('Internal Server Error', { status: 500 })
 	}
 }

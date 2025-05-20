@@ -1,39 +1,25 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Category as PrismaCategory } from '@/generated/prisma' // Use Prisma type
+import { Category as PrismaCategory } from '@/generated/prisma'
 import { Role } from '@/generated/prisma'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { CategoryForm } from './cat-form' // Import the category form
-import { PlusCircle, Edit, Trash2, MoreHorizontal, ArrowUpDown } from 'lucide-react'
+import { Edit, Trash2, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ColumnDef, flexRender, getCoreRowModel, useReactTable, getSortedRowModel, SortingState } from '@tanstack/react-table'
+import { ColumnDef, SortingState, PaginationState } from '@tanstack/react-table'
+import { CustomDataTable } from '@/components/custom/custom-data-table'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { CategoryForm } from './cat-form'
+import { fetchCategories_cli, deleteCategory_cli } from '@/services/inventoryService'
+import { AddFAB } from '@/components/AddFAB'
 
-// Define a type that includes potential parent category info if fetched
 type CategoryWithParent = PrismaCategory & {
 	parentCategory?: { id: string; name: string } | null
-}
-
-async function fetchCategoriesAPI(): Promise<CategoryWithParent[]> {
-	// Adjust include based on what you want to display (e.g., parentCategory name)
-	const response = await fetch('/api/inv-categories?includeParent=true') // Example: Add query param if API supports it
-	if (!response.ok) {
-		throw new Error('Failed to fetch categories from client')
-	}
-	return response.json()
-}
-
-async function deleteCategoryAPI(id: string): Promise<void> {
-	const response = await fetch(`/api/inv-categories/${id}`, { method: 'DELETE' })
-	if (!response.ok) {
-		const errorData = await response.text()
-		throw new Error(`Failed to delete category: ${errorData || response.statusText}`)
-	}
 }
 
 const categoryQueryKeys = {
@@ -42,62 +28,60 @@ const categoryQueryKeys = {
 	detail: (id: string) => [...categoryQueryKeys.all, 'detail', id] as const,
 }
 
-interface CategoryListProps {
-	initialCategories: CategoryWithParent[]
-}
-
-export function CategoryList({ initialCategories }: CategoryListProps) {
+export function CategoryList() {
 	const { data: session } = useSession()
+	const queryClient = useQueryClient()
 	const [isSheetOpen, setIsSheetOpen] = useState(false)
 	const [editingCategory, setEditingCategory] = useState<CategoryWithParent | null>(null)
-	const queryClient = useQueryClient()
-	const [sorting, setSorting] = React.useState<SortingState>([])
+	const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+	const [sorting, setSorting] = useState<SortingState>([])
+	const [search, setSearch] = useState('')
 
 	const canModify = session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST
 
-	const {
-		data: categories,
-		isLoading,
-		error,
-	} = useQuery<CategoryWithParent[], Error>({
-		queryKey: categoryQueryKeys.lists(),
-		queryFn: fetchCategoriesAPI,
-		initialData: initialCategories,
+	const { data, isLoading, error } = useQuery<{ categories: CategoryWithParent[]; total: number }, Error>({
+		queryKey: ['categories', 'list', pagination.pageIndex, pagination.pageSize, search],
+		queryFn: () => fetchCategories_cli(pagination.pageIndex + 1, pagination.pageSize, search),
 	})
 
+	const categories = data?.categories ?? []
+	const total = data?.total ?? 0
+
 	const deleteMutation = useMutation({
-		mutationFn: deleteCategoryAPI,
+		mutationFn: deleteCategory_cli,
 		onSuccess: () => {
 			toast.success('Category deleted successfully.')
-			queryClient.invalidateQueries({ queryKey: categoryQueryKeys.lists() })
+			queryClient.invalidateQueries({ queryKey: ['categories', 'list'] })
 		},
 		onError: (err: Error) => {
 			toast.error(err.message || 'Failed to delete category.')
 		},
 	})
 
-	const handleEdit = (category: CategoryWithParent) => {
+	const handleEdit = useCallback((category: CategoryWithParent) => {
 		setEditingCategory(category)
 		setIsSheetOpen(true)
-	}
+	}, [])
 
-	const handleAddNew = () => {
+	const handleAddNew = useCallback(() => {
 		setEditingCategory(null)
 		setIsSheetOpen(true)
-	}
+	}, [])
 
-	const handleDelete = async (id: string) => {
-		if (!confirm('Are you sure you want to delete this category? This might affect subcategories and items.')) return
-		deleteMutation.mutate(id)
-	}
+	const handleDelete = useCallback(
+		(id: string) => {
+			if (!confirm('Are you sure you want to delete this category? This might affect subcategories and items.')) return
+			deleteMutation.mutate(id)
+		},
+		[deleteMutation]
+	)
 
-	const handleFormSuccess = () => {
+	const handleFormSuccess = useCallback(() => {
 		setIsSheetOpen(false)
 		setEditingCategory(null)
-		// Data will be refetched by query invalidation in CategoryForm
-	}
+	}, [])
 
-	const columns = React.useMemo<ColumnDef<CategoryWithParent>[]>(
+	const columns = useMemo<ColumnDef<CategoryWithParent>[]>(
 		() => [
 			{
 				accessorKey: 'name',
@@ -166,82 +150,77 @@ export function CategoryList({ initialCategories }: CategoryListProps) {
 				  ]
 				: []),
 		],
-		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete] // Added handleEdit
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
 	)
 
-	const currentCategories = categories || []
+	const isAnyFilterActive = !!search
 
-	const table = useReactTable({
-		data: currentCategories,
-		columns,
-		getCoreRowModel: getCoreRowModel(),
-		onSortingChange: setSorting,
-		getSortedRowModel: getSortedRowModel(),
-		state: { sorting },
-	})
-
-	if (isLoading && !categories) return <div>Loading initial categories...</div>
 	if (error) return <div className='text-red-600'>Error: {error.message}</div>
-
 	return (
-		<div>
-			{canModify && (
-				<div className='mb-4 flex justify-end'>
-					<Sheet
-						open={isSheetOpen}
-						onOpenChange={setIsSheetOpen}>
-						<SheetTrigger asChild>
-							<Button onClick={handleAddNew}>
-								<PlusCircle className='mr-2 h-4 w-4' /> Add New Category
-							</Button>
-						</SheetTrigger>
-						<SheetContent className='w-full overflow-y-auto sm:max-w-md'>
-							<SheetHeader>
-								<SheetTitle>{editingCategory ? 'Edit Category' : 'Add New Category'}</SheetTitle>
-							</SheetHeader>
-							<CategoryForm
-								categoryData={editingCategory}
-								allCategories={currentCategories} // Pass current categories for parent selection
-								onSuccess={handleFormSuccess}
-							/>
-						</SheetContent>
-					</Sheet>
-				</div>
-			)}
-			<div className='rounded-md border'>
-				<Table>
-					<TableHeader>
-						{table.getHeaderGroups().map(headerGroup => (
-							<TableRow key={headerGroup.id}>
-								{headerGroup.headers.map(header => (
-									<TableHead key={header.id}>{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}</TableHead>
-								))}
-							</TableRow>
-						))}
-					</TableHeader>
-					<TableBody>
-						{table.getRowModel().rows?.length ? (
-							table.getRowModel().rows.map(row => (
-								<TableRow
-									key={row.id}
-									data-state={row.getIsSelected() && 'selected'}>
-									{row.getVisibleCells().map(cell => (
-										<TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-									))}
-								</TableRow>
-							))
-						) : (
-							<TableRow>
-								<TableCell
-									colSpan={columns.length}
-									className='h-24 text-center'>
-									No results.
-								</TableCell>
-							</TableRow>
-						)}
-					</TableBody>
-				</Table>
+		<div className='w-full'>
+			{/* Filter/search controls */}
+			<div className='mb-4 flex flex-wrap items-center gap-2 rounded-md border p-4'>
+				{isLoading ? (
+					<Skeleton className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-2xs' />
+				) : (
+					<Input
+						placeholder='Search categories...'
+						value={search}
+						onChange={event => {
+							setSearch(event.target.value)
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-2xs'
+					/>
+				)}
+				{isAnyFilterActive && (
+					<Button
+						variant='ghost'
+						onClick={() => {
+							setSearch('')
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						className='h-10'>
+						Reset
+					</Button>
+				)}
 			</div>
+
+			<CustomDataTable
+				columns={columns}
+				data={categories}
+				isLoading={isLoading}
+				noResultsMessage='No categories found.'
+				sorting={sorting}
+				onSortingChange={setSorting}
+				pagination={pagination}
+				onPaginationChange={setPagination}
+				pageCount={Math.ceil(total / pagination.pageSize)}
+			/>
+
+			{/* Floating Action Button (FAB) for Add New Category */}
+			{canModify && (
+				<AddFAB
+					onClick={handleAddNew}
+					ariaLabel='Add New Category'
+				/>
+			)}
+
+			{/* Sheet for Add/Edit */}
+			<Sheet
+				open={isSheetOpen}
+				onOpenChange={setIsSheetOpen}>
+				<SheetContent className='w-full overflow-y-auto sm:max-w-md'>
+					<SheetHeader>
+						<SheetTitle>{editingCategory ? 'Edit Category' : 'Add New Category'}</SheetTitle>
+					</SheetHeader>
+					<CategoryForm
+						categoryData={editingCategory}
+						allCategories={categories}
+						onSuccess={handleFormSuccess}
+					/>
+				</SheetContent>
+			</Sheet>
 		</div>
 	)
 }

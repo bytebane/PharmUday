@@ -1,103 +1,107 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Report as PrismaReport, ReportCategory as PrismaReportCategory, User as PrismaUser, Role } from '@/generated/prisma'
+import { Role } from '@/generated/prisma'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ReportForm } from './reports-form' // Assuming this is the correct path to your ReportForm
-import { PlusCircle, Edit, Trash2, FileText, MoreHorizontal, ArrowUpDown } from 'lucide-react'
+import { Edit, Trash2, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
-import { ColumnDef, flexRender, getCoreRowModel, useReactTable, getSortedRowModel, SortingState } from '@tanstack/react-table'
-import React from 'react'
-
-// Type from app/reports/page.tsx
-type ReportWithRelations = PrismaReport & {
-	category: PrismaReportCategory
-	uploadedBy: Pick<PrismaUser, 'id' | 'email'>
-}
-
-async function fetchReportsAPI(): Promise<ReportWithRelations[]> {
-	const response = await fetch('/api/reports')
-	if (!response.ok) {
-		throw new Error('Failed to fetch reports from client')
-	}
-	return response.json()
-}
-
-async function deleteReportAPI(id: string): Promise<void> {
-	const response = await fetch(`/api/reports/${id}`, { method: 'DELETE' })
-	if (!response.ok) {
-		const errorData = await response.text()
-		throw new Error(`Failed to delete report: ${errorData || response.statusText}`)
-	}
-}
+import { ColumnDef, SortingState, PaginationState } from '@tanstack/react-table'
+import { CustomDataTable } from '@/components/custom/custom-data-table'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ReportForm } from './reports-form'
+import { fetchReports_cli, deleteReport_cli, ReportWithRelations, fetchReportCategories_cli } from '@/services/reportService'
+import { AddFAB } from '@/components/AddFAB'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 const reportQueryKeys = {
 	all: ['reports'] as const,
 	lists: () => [...reportQueryKeys.all, 'list'] as const,
+	detail: (id: string) => [...reportQueryKeys.all, 'detail', id] as const,
 }
 
-interface ReportListProps {
-	initialReports: ReportWithRelations[]
-}
-
-export function ReportList({ initialReports }: ReportListProps) {
+export function ReportList() {
 	const { data: session } = useSession()
-	const [isSheetOpen, setIsSheetOpen] = useState(false)
-	const [editingReport, setEditingReport] = useState<PrismaReport | null>(null) // Use PrismaReport for editing form
 	const queryClient = useQueryClient()
-	const [sorting, setSorting] = React.useState<SortingState>([])
+	const [isSheetOpen, setIsSheetOpen] = useState(false)
+	const [editingReport, setEditingReport] = useState<ReportWithRelations | null>(null)
+	const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+	const [sorting, setSorting] = useState<SortingState>([])
+	const [search, setSearch] = useState('')
+	const [categoryFilter, setCategoryFilter] = useState<string>('all')
+	const today = new Date().toISOString().slice(0, 10)
+	const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({ to: today })
 
-	// Users can manage their own reports. Admins/Pharmacists can manage all.
-	const canManageAll = session?.user?.role === Role.ADMIN || session?.user?.role === Role.SUPER_ADMIN || session?.user?.role === Role.PHARMACIST
+	const canModify = session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST
 
 	const {
-		data: reports,
+		data,
 		isLoading,
-		error,
-	} = useQuery<ReportWithRelations[], Error>({
-		queryKey: reportQueryKeys.lists(),
-		queryFn: fetchReportsAPI,
-		initialData: initialReports,
+		error: reportError,
+	} = useQuery<{ reports: ReportWithRelations[]; total: number }, Error>({
+		queryKey: ['reports', 'list', pagination.pageIndex, pagination.pageSize, search, categoryFilter, dateRange.from, dateRange.to],
+		queryFn: () =>
+			fetchReports_cli(pagination.pageIndex + 1, pagination.pageSize, {
+				search,
+				categoryId: categoryFilter !== 'all' ? categoryFilter : undefined,
+				from: dateRange.from,
+				to: dateRange.to,
+			}),
 	})
 
+	const {
+		data: categoryData,
+		isLoading: isLoadingCategories,
+		error: categoryError,
+	} = useQuery({
+		queryKey: ['report-categories', 'filter'],
+		queryFn: () => fetchReportCategories_cli(1, 100),
+	})
+
+	const reports = data?.reports ?? []
+	const total = data?.total ?? 0
+	const categories = categoryData?.categories ?? []
+	const error = reportError || categoryError
+
 	const deleteMutation = useMutation({
-		mutationFn: deleteReportAPI,
+		mutationFn: deleteReport_cli,
 		onSuccess: () => {
 			toast.success('Report deleted successfully.')
-			queryClient.invalidateQueries({ queryKey: reportQueryKeys.lists() })
+			queryClient.invalidateQueries({ queryKey: ['reports', 'list'] })
 		},
 		onError: (err: Error) => {
 			toast.error(err.message || 'Failed to delete report.')
 		},
 	})
 
-	const handleEdit = (report: PrismaReport) => {
+	const handleEdit = useCallback((report: ReportWithRelations) => {
 		setEditingReport(report)
 		setIsSheetOpen(true)
-	}
+	}, [])
 
-	const handleAddNew = () => {
+	const handleAddNew = useCallback(() => {
 		setEditingReport(null)
 		setIsSheetOpen(true)
-	}
+	}, [])
 
-	const handleDelete = async (id: string) => {
-		if (!confirm('Are you sure you want to delete this report? The associated file will also be removed.')) return
-		deleteMutation.mutate(id)
-	}
+	const handleDelete = useCallback(
+		(id: string) => {
+			if (!confirm('Are you sure you want to delete this report?')) return
+			deleteMutation.mutate(id)
+		},
+		[deleteMutation]
+	)
 
-	const handleFormSuccess = () => {
+	const handleFormSuccess = useCallback(() => {
 		setIsSheetOpen(false)
 		setEditingReport(null)
-	}
+	}, [])
 
-	const columns = React.useMemo<ColumnDef<ReportWithRelations>[]>(
+	const columns = useMemo<ColumnDef<ReportWithRelations>[]>(
 		() => [
 			{
 				accessorKey: 'title',
@@ -105,8 +109,7 @@ export function ReportList({ initialReports }: ReportListProps) {
 					<Button
 						variant='ghost'
 						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-						Title
-						<ArrowUpDown className='ml-2 h-4 w-4' />
+						Title <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
 				cell: ({ row }) => row.getValue('title'),
@@ -117,23 +120,10 @@ export function ReportList({ initialReports }: ReportListProps) {
 					<Button
 						variant='ghost'
 						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-						Category
-						<ArrowUpDown className='ml-2 h-4 w-4' />
+						Category <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => row.original.category.name,
-			},
-			{
-				accessorKey: 'reportDate',
-				header: ({ column }) => (
-					<Button
-						variant='ghost'
-						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-						Report Date
-						<ArrowUpDown className='ml-2 h-4 w-4' />
-					</Button>
-				),
-				cell: ({ row }) => format(new Date(row.getValue('reportDate') as string), 'PPP'),
+				cell: ({ row }) => row.original.category?.name ?? 'N/A',
 			},
 			{
 				accessorKey: 'patientName',
@@ -141,157 +131,182 @@ export function ReportList({ initialReports }: ReportListProps) {
 					<Button
 						variant='ghost'
 						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-						Patient
-						<ArrowUpDown className='ml-2 h-4 w-4' />
+						Patient <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
 				cell: ({ row }) => row.getValue('patientName') || 'N/A',
 			},
-			...(canManageAll
+			{
+				accessorKey: 'reportDate',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Report Date <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => (row.getValue('reportDate') ? new Date(row.getValue('reportDate')).toLocaleDateString() : 'N/A'),
+			},
+			...(canModify
 				? [
 						{
-							accessorKey: 'uploadedBy.email',
-							header: 'Uploaded By', // Not making this sortable for brevity, can be added
-							cell: ({ row }: { row: { original: ReportWithRelations } }) => row.original.uploadedBy.email,
+							id: 'actions',
+							header: () => <div className='text-right'>Actions</div>,
+							cell: ({ row }: { row: { original: ReportWithRelations } }) => (
+								<div className='text-right'>
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<Button
+												variant='ghost'
+												className='h-8 w-8 p-0'>
+												<span className='sr-only'>Open menu</span>
+												<MoreHorizontal className='h-4 w-4' />
+											</Button>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent align='end'>
+											<DropdownMenuItem onClick={() => handleEdit(row.original)}>
+												<Edit className='mr-2 h-4 w-4' /> Edit
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												onClick={() => handleDelete(row.original.id)}
+												disabled={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+												className='text-red-600 focus:text-red-700 focus:bg-red-50'>
+												<Trash2 className='mr-2 h-4 w-4' /> Delete
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
+								</div>
+							),
 						} as ColumnDef<ReportWithRelations>,
 				  ]
 				: []),
-			{
-				accessorKey: 'fileUrl',
-				header: 'File',
-				cell: ({ row }) => (
-					<a
-						href={row.getValue('fileUrl') as string}
-						target='_blank'
-						rel='noopener noreferrer'
-						className='text-blue-600 hover:underline'>
-						<FileText className='mr-1 inline h-5 w-5' /> View
-					</a>
-				),
-			},
-			{
-				id: 'actions',
-				header: () => <div className='text-right'>Actions</div>,
-				cell: ({ row }: { row: { original: ReportWithRelations } }) => {
-					const canCurrentUserModify = canManageAll || session?.user?.id === row.original.uploadedById
-					return canCurrentUserModify ? (
-						<div className='text-right'>
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button
-										variant='ghost'
-										className='h-8 w-8 p-0'>
-										<span className='sr-only'>Open menu</span>
-										<MoreHorizontal className='h-4 w-4' />
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align='end'>
-									<DropdownMenuItem onClick={() => handleEdit(row.original)}>
-										<Edit className='mr-2 h-4 w-4' /> Edit
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										onClick={() => handleDelete(row.original.id)}
-										disabled={deleteMutation.isPending && deleteMutation.variables === row.original.id}
-										className='text-red-600 focus:text-red-700 focus:bg-red-50'>
-										<Trash2 className='mr-2 h-4 w-4' /> Delete
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						</div>
-					) : null
-				},
-			},
 		],
-		[canManageAll, session?.user?.id, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
 	)
 
-	if (isLoading && !reports) return <div>Loading reports...</div>
-	if (error) return <div className='text-red-600'>Error: {error.message}</div>
+	const isAnyFilterActive = !!search || categoryFilter !== 'all' || !!dateRange.from || (dateRange.to && dateRange.to !== today)
 
-	const currentReports = reports || []
+	if (error) {
+		return (
+			<div className='w-full'>
+				<p className='text-red-500'>Error: {error.message}</p>
+			</div>
+		)
+	}
 
 	return (
-		<div>
-			<div className='mb-4 flex justify-end'>
-				<Sheet
-					open={isSheetOpen}
-					onOpenChange={setIsSheetOpen}>
-					<SheetTrigger asChild>
-						<Button onClick={handleAddNew}>
-							<PlusCircle className='mr-2 h-4 w-4' /> Add New Report
-						</Button>
-					</SheetTrigger>
-					<SheetContent className='w-full overflow-y-auto sm:max-w-lg md:max-w-xl'>
-						<SheetHeader>
-							<SheetTitle>{editingReport ? 'Edit Report' : 'Add New Report'}</SheetTitle>
-						</SheetHeader>
-						<ReportForm
-							reportData={editingReport}
-							onSuccess={handleFormSuccess}
-						/>
-					</SheetContent>
-				</Sheet>
+		<div className='w-full'>
+			{/* Filter/search controls */}
+			<div className='mb-4 flex flex-wrap items-center gap-2 rounded-md border p-4'>
+				{/* Search input */}
+				<Input
+					placeholder='Search reports...'
+					value={search}
+					onChange={event => {
+						setSearch(event.target.value)
+						setPagination(p => ({ ...p, pageIndex: 0 }))
+					}}
+					className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-2xs'
+				/>
+
+				{/* Category filter */}
+				{isLoadingCategories ? (
+					<Skeleton className='h-10 w-[180px]' />
+				) : (
+					<Select
+						value={categoryFilter}
+						onValueChange={value => {
+							setCategoryFilter(value)
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}>
+						<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
+							<SelectValue placeholder='Filter by Category' />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value='all'>All Categories</SelectItem>
+							{categories.map(cat => (
+								<SelectItem
+									key={cat.id}
+									value={cat.id}>
+									{cat.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				)}
+
+				{/* Date range filter */}
+				<Input
+					type='date'
+					value={dateRange.from || ''}
+					onChange={e => {
+						setDateRange(r => ({ ...r, from: e.target.value }))
+						setPagination(p => ({ ...p, pageIndex: 0 }))
+					}}
+					className='h-10 w-[140px]'
+					placeholder='From'
+				/>
+				<span>-</span>
+				<Input
+					type='date'
+					value={dateRange.to || ''}
+					onChange={e => {
+						setDateRange(r => ({ ...r, to: e.target.value }))
+						setPagination(p => ({ ...p, pageIndex: 0 }))
+					}}
+					className='h-10 w-[140px]'
+					placeholder='To'
+				/>
+
+				{/* Reset button */}
+				{isAnyFilterActive && (
+					<Button
+						variant='ghost'
+						onClick={() => {
+							setSearch('')
+							setCategoryFilter('all')
+							setDateRange({ to: today })
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						className='h-10'>
+						Reset
+					</Button>
+				)}
 			</div>
-			<ReportTable
-				data={currentReports}
+
+			<CustomDataTable
 				columns={columns}
+				data={reports}
+				isLoading={isLoading}
+				noResultsMessage='No reports found.'
 				sorting={sorting}
 				onSortingChange={setSorting}
+				pagination={pagination}
+				onPaginationChange={setPagination}
+				pageCount={Math.ceil(total / pagination.pageSize)}
 			/>
-		</div>
-	)
-}
 
-interface ReportTableProps {
-	data: ReportWithRelations[]
-	columns: ColumnDef<ReportWithRelations>[]
-	sorting: SortingState
-	onSortingChange: (sorting: SortingState) => void
-}
-
-const ReportTable: React.FC<ReportTableProps> = ({ data, columns, sorting, onSortingChange }) => {
-	const table = useReactTable({
-		data,
-		columns,
-		getCoreRowModel: getCoreRowModel(),
-		onSortingChange,
-		getSortedRowModel: getSortedRowModel(),
-		state: { sorting },
-	})
-	return (
-		<div className='rounded-md border'>
-			<Table>
-				<TableHeader>
-					{table.getHeaderGroups().map(headerGroup => (
-						<TableRow key={headerGroup.id}>
-							{headerGroup.headers.map(header => (
-								<TableHead key={header.id}>{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}</TableHead>
-							))}
-						</TableRow>
-					))}
-				</TableHeader>
-				<TableBody>
-					{table.getRowModel().rows?.length ? (
-						table.getRowModel().rows.map(row => (
-							<TableRow
-								key={row.id}
-								data-state={row.getIsSelected() && 'selected'}>
-								{row.getVisibleCells().map(cell => (
-									<TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-								))}
-							</TableRow>
-						))
-					) : (
-						<TableRow>
-							<TableCell
-								colSpan={columns.length}
-								className='h-24 text-center'>
-								No results.
-							</TableCell>
-						</TableRow>
-					)}
-				</TableBody>
-			</Table>
+			{canModify && (
+				<>
+					<AddFAB
+						onClick={handleAddNew}
+						ariaLabel='Add New Report'
+					/>
+					<Sheet
+						open={isSheetOpen}
+						onOpenChange={setIsSheetOpen}>
+						<SheetContent className='w-full overflow-y-auto sm:max-w-md'>
+							<SheetHeader>
+								<SheetTitle>{editingReport ? 'Edit Report' : 'Add New Report'}</SheetTitle>
+							</SheetHeader>
+							<ReportForm
+								reportData={editingReport}
+								onSuccess={handleFormSuccess}
+							/>
+						</SheetContent>
+					</Sheet>
+				</>
+			)}
 		</div>
 	)
 }

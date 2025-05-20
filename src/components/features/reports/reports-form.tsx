@@ -19,6 +19,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
+import Link from 'next/link'
 
 // Use the base schema for form values, file handled separately
 type ReportFormValues = z.infer<typeof reportBaseSchema>
@@ -257,13 +258,13 @@ export function ReportForm({ reportData, onSuccess }: ReportFormProps) {
 					{!selectedFile && isEditing && reportData?.fileUrl && (
 						<FormDescription>
 							Currently uploaded:{' '}
-							<a
+							<Link
 								href={reportData.fileUrl}
 								target='_blank'
 								rel='noopener noreferrer'
 								className='text-blue-600 hover:underline'>
 								View File
-							</a>
+							</Link>
 						</FormDescription>
 					)}
 					<FormMessage />
@@ -272,11 +273,11 @@ export function ReportForm({ reportData, onSuccess }: ReportFormProps) {
 				{isEditing && reportData?.fileUrl && (
 					<FormItem>
 						<p className='text-sm'>
-							<a
+							<Link
 								href={reportData.fileUrl}
 								target='_blank'
 								rel='noopener noreferrer'
-								className='text-blue-600 hover:underline'></a>
+								className='text-blue-600 hover:underline'></Link>
 						</p>
 					</FormItem>
 				)}

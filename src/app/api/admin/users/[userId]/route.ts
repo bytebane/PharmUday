@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
 import bcrypt from 'bcryptjs'
-import { authOptions } from '@/lib/auth'
 import { db as prisma } from '@/lib/db'
 import { Role } from '@/generated/prisma'
+import { authorize, AuthenticatedUser } from '@/lib/utils/auth-utils'
 
 interface Context {
 	params: {
@@ -16,13 +15,12 @@ interface Context {
  * Fetches a single user by ID.
  */
 export async function GET(req: Request, context: Context) {
-	const session = await getServerSession(authOptions)
-	const { userId } = context.params
-
-	if (!session?.user?.role || (session.user.role !== Role.ADMIN && session.user.role !== Role.SUPER_ADMIN)) {
-		return NextResponse.json({ message: 'Forbidden: Insufficient privileges' }, { status: 403 })
+	const authResult = await authorize([Role.ADMIN, Role.SUPER_ADMIN])
+	if (authResult.response) {
+		return authResult.response
 	}
 
+	const { userId } = context.params
 	try {
 		const user = await prisma.user.findUnique({
 			where: { id: userId },
@@ -52,19 +50,14 @@ export async function GET(req: Request, context: Context) {
  * Updates a user.
  */
 export async function PUT(req: Request, context: Context) {
-	const session = await getServerSession(authOptions)
+	const authResult = await authorize([Role.ADMIN, Role.SUPER_ADMIN])
+	if (authResult.response) {
+		return authResult.response
+	}
+	const { user: currentUser } = authResult as { user: AuthenticatedUser } // User is guaranteed non-null
 	const { userId } = context.params
-
-	if (!session?.user?.id || !session?.user?.role) {
-		return NextResponse.json({ message: 'Not authenticated' }, { status: 401 })
-	}
-
-	const currentUserId = session.user.id
-	const currentUserRole = session.user.role
-
-	if (currentUserRole !== Role.ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
-		return NextResponse.json({ message: 'Forbidden: Insufficient privileges' }, { status: 403 })
-	}
+	const currentUserId = currentUser.id
+	const currentUserRole = currentUser.role as Role
 
 	try {
 		const body = await req.json()
@@ -77,10 +70,12 @@ export async function PUT(req: Request, context: Context) {
 
 		// Authorization: Prevent self-deactivation or role change that locks out
 		if (userId === currentUserId) {
+			// currentUserId is from the authenticated session
 			if (typeof isActive === 'boolean' && !isActive) {
 				return NextResponse.json({ message: 'Cannot deactivate your own account.' }, { status: 403 })
 			}
-			if (roleToAssign && roleToAssign !== currentUserRole) {
+			if (roleToAssign && roleToAssign !== currentUser.role) {
+				// currentUser.role
 				return NextResponse.json({ message: 'Cannot change your own role.' }, { status: 403 })
 			}
 		}
@@ -88,7 +83,8 @@ export async function PUT(req: Request, context: Context) {
 		// Authorization: Admins cannot modify other Admins or Super Admins
 		if (currentUserRole === Role.ADMIN) {
 			if (userToUpdate.role === Role.ADMIN || userToUpdate.role === Role.SUPER_ADMIN) {
-				if (userId !== currentUserId) { // Admins can modify their own non-critical fields
+				if (userId !== currentUserId) {
+					// Admins can modify their own non-critical fields
 					return NextResponse.json({ message: 'Admins cannot modify other Admins or Super Admins.' }, { status: 403 })
 				}
 			}
@@ -138,20 +134,14 @@ export async function PUT(req: Request, context: Context) {
  * Deletes a user.
  */
 export async function DELETE(req: Request, context: Context) {
-	const session = await getServerSession(authOptions)
+	const authResult = await authorize([Role.ADMIN, Role.SUPER_ADMIN])
+	if (authResult.response) {
+		return authResult.response
+	}
+	const { user: currentUser } = authResult as { user: AuthenticatedUser } // User is guaranteed non-null
 	const { userId } = context.params
-
-	if (!session?.user?.id || !session?.user?.role) {
-		return NextResponse.json({ message: 'Not authenticated' }, { status: 401 })
-	}
-
-	const currentUserId = session.user.id
-	const currentUserRole = session.user.role
-
-	if (currentUserRole !== Role.ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
-		return NextResponse.json({ message: 'Forbidden: Insufficient privileges' }, { status: 403 })
-	}
-
+	const currentUserId = currentUser.id
+	const currentUserRole = currentUser.role as Role
 	if (userId === currentUserId) {
 		return NextResponse.json({ message: 'Cannot delete your own account.' }, { status: 403 })
 	}

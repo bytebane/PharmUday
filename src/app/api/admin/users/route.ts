@@ -1,9 +1,16 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth'; // Adjusted path to your authOptions
-import { db as prisma } from '@/lib/db'; // Adjusted path to your prisma client
-import { Role } from '@/generated/prisma'; // Adjusted path to your generated Role enum
-import bcrypt from 'bcryptjs';
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { db } from '@/lib/db'
+import { Role } from '@/generated/prisma'
+import { authorize } from '@/lib/utils/auth-utils' // Import the new utility
+import bcrypt from 'bcryptjs'
+
+const paginationSchema = z.object({
+	page: z.coerce.number().min(1).default(1),
+	limit: z.coerce.number().min(1).max(100).default(10),
+	search: z.string().optional(),
+	role: z.string().optional(),
+})
 
 /**
  * GET /api/admin/users
@@ -11,30 +18,38 @@ import bcrypt from 'bcryptjs';
  * - SUPER_ADMIN and ADMIN can see all users.
  */
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
+	const authResult = await authorize([Role.ADMIN, Role.SUPER_ADMIN])
+	if (authResult.response) {
+		return authResult.response
+	}
+	try {
+		const url = new URL(req.url)
+		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
+		const { page, limit, search, role } = params
 
-  if (!session?.user?.role || (session.user.role !== Role.ADMIN && session.user.role !== Role.SUPER_ADMIN)) {
-    return NextResponse.json({ message: 'Forbidden: Insufficient privileges' }, { status: 403 });
-  }
+		const where: any = {}
+		if (search) {
+			where.OR = [{ name: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }]
+		}
+		if (role) {
+			where.role = role
+		}
 
-  try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        emailVerified: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    return NextResponse.json(users);
-  } catch (error) {
-    console.error('Failed to fetch users:', error);
-    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
-  }
+		const [users, total] = await Promise.all([
+			db.user.findMany({
+				where,
+				orderBy: { createdAt: 'desc' },
+				skip: (page - 1) * limit,
+				take: limit,
+			}),
+			db.user.count({ where }),
+		])
+
+		return NextResponse.json({ users, total })
+	} catch (error) {
+		console.error('[USERS_GET]', error)
+		return new NextResponse('Internal Server Error', { status: 500 })
+	}
 }
 
 /**
@@ -44,75 +59,71 @@ export async function GET(req: Request) {
  * - ADMIN can create PHARMACIST, CUSTOMER, SELLER.
  */
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+	const authResult = await authorize([Role.ADMIN, Role.SUPER_ADMIN])
+	if (authResult.response) {
+		return authResult.response
+	}
+	// User is guaranteed to be non-null here if response was null
+	const currentUserRole = authResult.user!.role as Role
 
-  if (!session?.user?.role) {
-    return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
-  }
+	try {
+		const body = await req.json()
+		const { email, password, name, role: roleToAssign } = body
 
-  const currentUserRole = session.user.role;
+		if (!email || !password || !roleToAssign || !name) {
+			return NextResponse.json({ message: 'Missing required fields: email, password, name, and role are required.' }, { status: 400 })
+		}
 
-  if (currentUserRole !== Role.ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
-    return NextResponse.json({ message: 'Forbidden: Insufficient privileges' }, { status: 403 });
-  }
+		if (!Object.values(Role).includes(roleToAssign)) {
+			return NextResponse.json({ message: 'Invalid role specified.' }, { status: 400 })
+		}
 
-  try {
-    const body = await req.json();
-    const { email, password, name, role: roleToAssign } = body;
+		// Authorization check: Who can create whom?
+		if (currentUserRole === Role.ADMIN) {
+			if (roleToAssign === Role.ADMIN || roleToAssign === Role.SUPER_ADMIN) {
+				return NextResponse.json({ message: 'Admins cannot create other Admins or Super Admins.' }, { status: 403 })
+			}
+		}
+		// SUPER_ADMIN can create any role.
 
-    if (!email || !password || !roleToAssign || !name) {
-      return NextResponse.json({ message: 'Missing required fields: email, password, name, and role are required.' }, { status: 400 });
-    }
+		const existingUser = await db.user.findUnique({
+			where: { email },
+		})
 
-    if (!Object.values(Role).includes(roleToAssign)) {
-        return NextResponse.json({ message: 'Invalid role specified.' }, { status: 400 });
-    }
+		if (existingUser) {
+			return NextResponse.json({ message: 'User with this email already exists.' }, { status: 409 })
+		}
 
-    // Authorization check: Who can create whom?
-    if (currentUserRole === Role.ADMIN) {
-      if (roleToAssign === Role.ADMIN || roleToAssign === Role.SUPER_ADMIN) {
-        return NextResponse.json({ message: 'Admins cannot create other Admins or Super Admins.' }, { status: 403 });
-      }
-    }
-    // SUPER_ADMIN can create any role.
+		const hashedPassword = await bcrypt.hash(password, 10)
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
+		const newUser = await db.user.create({
+			data: {
+				email,
+				name,
+				passwordHash: hashedPassword,
+				role: roleToAssign as Role,
+				isActive: true, // New users are active by default
+				// For admin-created users, you might consider them verified or skip verification.
+				emailVerified: new Date(), // Or null, depending on your logic
+			},
+			select: {
+				// Only return non-sensitive fields
+				id: true,
+				email: true,
+				name: true,
+				role: true,
+				isActive: true,
+				createdAt: true,
+			},
+		})
 
-    if (existingUser) {
-      return NextResponse.json({ message: 'User with this email already exists.' }, { status: 409 });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = await prisma.user.create({
-      data: {
-        email,
-        name,
-        passwordHash: hashedPassword,
-        role: roleToAssign as Role,
-        isActive: true, // New users are active by default
-        // For admin-created users, you might consider them verified or skip verification.
-        emailVerified: new Date(), // Or null, depending on your logic
-      },
-      select: { // Only return non-sensitive fields
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-      }
-    });
-
-    return NextResponse.json(newUser, { status: 201 });
-
-  } catch (error) {
-    console.error('User creation error:', error);
-    if (error instanceof SyntaxError) { // JSON parsing error
-        return NextResponse.json({ message: 'Invalid request body.' }, { status: 400 });
-    }
-    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
-  }
+		return NextResponse.json(newUser, { status: 201 })
+	} catch (error) {
+		console.error('User creation error:', error)
+		if (error instanceof SyntaxError) {
+			// JSON parsing error
+			return NextResponse.json({ message: 'Invalid request body.' }, { status: 400 })
+		}
+		return NextResponse.json({ message: 'Internal server error' }, { status: 500 })
+	}
 }

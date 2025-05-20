@@ -2,47 +2,55 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { reportCreateSchema } from '@/lib/validations/report'
-import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
+import { getCurrentUser } from '@/lib/auth'
 import { put } from '@vercel/blob' // Import Vercel Blob SDK
 import { nanoid } from 'nanoid' // For generating unique filenames
+import { parseFormData } from '@/lib/utils/formData-utils'
 
-// Helper to parse FormData
-async function parseFormData(req: NextRequest) {
-	const formData = await req.formData()
-	const data: { [key: string]: unknown } = {}
-	let file: File | null = null
+const paginationSchema = z.object({
+	page: z.coerce.number().min(1).default(1),
+	limit: z.coerce.number().min(1).max(100).default(10),
+	search: z.string().optional(),
+	categoryId: z.string().optional(),
+	from: z.string().optional(),
+	to: z.string().optional(),
+})
 
-	for (const [key, value] of formData.entries()) {
-		if (value instanceof File) {
-			file = value
-		} else {
-			data[key] = value
-		}
-	}
-	return { data, file }
-}
-
-export async function GET() {
+export async function GET(req: Request) {
 	try {
-		const user = await getCurrentUser()
-		console.log('User:', user)
-		if (!user) {
-			return new NextResponse('Unauthorized', { status: 401 })
+		const url = new URL(req.url)
+		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
+		const { page, limit, search, categoryId, from, to } = params
+
+		const where: any = {}
+		if (search) {
+			where.OR = [{ title: { contains: search, mode: 'insensitive' } }, { patientName: { contains: search, mode: 'insensitive' } }, { notes: { contains: search, mode: 'insensitive' } }]
+		}
+		if (categoryId && categoryId !== 'all') {
+			where.categoryId = categoryId
+		}
+		if (from || to) {
+			where.reportDate = {}
+			if (from) where.reportDate.gte = new Date(from)
+			if (to) where.reportDate.lte = new Date(to)
 		}
 
-		// Fetch reports uploaded by the current user or all if admin/pharmacist
-		const whereClause = user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN || user.role === Role.PHARMACIST ? {} : { uploadedById: user.id }
+		const [reports, total] = await Promise.all([
+			db.report.findMany({
+				where,
+				include: {
+					category: true,
+					uploadedBy: { select: { id: true, email: true } },
+				},
+				orderBy: { createdAt: 'desc' },
+				skip: (page - 1) * limit,
+				take: limit,
+			}),
+			db.report.count({ where }),
+		])
 
-		const reports = await db.report.findMany({
-			where: whereClause,
-			include: {
-				category: true,
-				uploadedBy: { select: { id: true, email: true } },
-			},
-			orderBy: { createdAt: 'desc' },
-		})
-		return NextResponse.json(reports)
+		return NextResponse.json({ reports, total })
 	} catch (error) {
 		console.error('[REPORTS_GET]', error)
 		return new NextResponse('Internal Server Error', { status: 500 })
@@ -56,7 +64,10 @@ export async function POST(req: NextRequest) {
 			return new NextResponse('Unauthorized', { status: 401 })
 		}
 
-		const { data, file } = await parseFormData(req)
+		// Define the expected shape of non-file form data for type safety with parseFormData
+		type ReportCreateFormData = Omit<z.infer<typeof reportCreateSchema>, 'file'> // Assuming 'file' is not part of schema for text fields
+
+		const { data, file } = await parseFormData<ReportCreateFormData>(req)
 
 		// Manually convert reportDate from string to Date
 		if (data.reportDate && typeof data.reportDate === 'string') {

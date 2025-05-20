@@ -1,56 +1,38 @@
 'use client'
 
-import { useSession } from 'next-auth/react'
-import { SaleWithBasicRelations } from '@/app/sales/history/page' // Import the type
+import React, { useState, useMemo, useEffect } from 'react'
+import { SaleWithBasicRelations } from '@/app/(main)/sales/history/page'
 import { Button } from '@/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Eye, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import Link from 'next/link'
-import { Role } from '@/generated/prisma'
-import { ColumnDef, flexRender, getCoreRowModel, useReactTable, getSortedRowModel, SortingState } from '@tanstack/react-table'
-import { FormattedDateCell } from '@/components/formatted-date-cell' // Adjust path if needed
-import React from 'react'
+import { useRouter } from 'next/navigation'
+import { ColumnDef, SortingState, PaginationState } from '@tanstack/react-table'
+import { Input } from '@/components/ui/input'
+import { fetchSalesHistory_cli } from '@/services/saleService'
+import { Skeleton } from '@/components/ui/skeleton'
+import { CustomDataTable } from '@/components/custom/custom-data-table'
 
-async function fetchSalesHistoryAPI(): Promise<SaleWithBasicRelations[]> {
-	const response = await fetch('/api/sales')
-	if (!response.ok) {
-		throw new Error('Failed to fetch sales history from client')
-	}
-	return response.json()
-}
+export function SalesHistoryList({ periodFilter }: { periodFilter?: string }) {
+	const router = useRouter()
+	const [sorting, setSorting] = useState<SortingState>([])
+	const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+	const [search, setSearch] = useState('')
+	// Use the prop as initial state, fallback to 'all_time'
+	const [period, setPeriod] = useState(periodFilter || 'all_time')
 
-const salesHistoryQueryKeys = {
-	all: ['salesHistory'] as const,
-	lists: () => [...salesHistoryQueryKeys.all, 'list'] as const,
-}
-
-interface SalesHistoryListProps {
-	initialSalesHistory: SaleWithBasicRelations[]
-}
-
-export function SalesHistoryList({ initialSalesHistory }: SalesHistoryListProps) {
-	const { data: session } = useSession()
-	const [sorting, setSorting] = React.useState<SortingState>([])
-
-	const {
-		data: salesHistory,
-		isLoading,
-		error,
-	} = useQuery<SaleWithBasicRelations[], Error>({
-		queryKey: salesHistoryQueryKeys.lists(),
-		queryFn: fetchSalesHistoryAPI,
-		initialData: initialSalesHistory,
+	const { data, isLoading, error } = useQuery<{ sales: SaleWithBasicRelations[]; total: number }, Error>({
+		queryKey: ['salesHistory', 'list', pagination.pageIndex, pagination.pageSize, search, period],
+		queryFn: () => fetchSalesHistory_cli(pagination.pageIndex + 1, pagination.pageSize, { search, period }),
 	})
 
-	// Determine if the user has permission to view all details or take actions
-	const canViewAllDetails = session?.user?.role === Role.ADMIN || session?.user?.role === Role.SUPER_ADMIN || session?.user?.role === Role.PHARMACIST
+	const sales = data?.sales ?? []
+	const total = data?.total ?? 0
 
-	const columns = React.useMemo<ColumnDef<SaleWithBasicRelations>[]>(
+	const columns = useMemo<ColumnDef<SaleWithBasicRelations>[]>(
 		() => [
 			{
-				accessorKey: 'invoice.invoiceNumber',
+				accessorKey: 'invoice.id',
 				header: ({ column }) => (
 					<Button
 						variant='ghost'
@@ -58,7 +40,7 @@ export function SalesHistoryList({ initialSalesHistory }: SalesHistoryListProps)
 						Invoice # <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => row.original.invoice?.invoiceNumber || row.original.id.substring(0, 8),
+				cell: ({ row }) => row.original.invoice?.id || row.original.id.substring(0, 8),
 			},
 			{
 				accessorKey: 'saleDate',
@@ -69,12 +51,7 @@ export function SalesHistoryList({ initialSalesHistory }: SalesHistoryListProps)
 						Date <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => (
-					<FormattedDateCell
-						dateValue={row.getValue('saleDate') as string | Date}
-						formatString='PPP p'
-					/>
-				),
+				cell: ({ row }) => new Date(row.original.saleDate).toLocaleString(),
 			},
 			{
 				accessorKey: 'customer.name',
@@ -88,7 +65,7 @@ export function SalesHistoryList({ initialSalesHistory }: SalesHistoryListProps)
 				cell: ({ row }) => row.original.customer?.name || 'Walk-in',
 			},
 			{
-				accessorKey: 'staff.email', // Assuming staff is an object with an email property
+				accessorKey: 'staff.email',
 				header: ({ column }) => (
 					<Button
 						variant='ghost'
@@ -103,12 +80,11 @@ export function SalesHistoryList({ initialSalesHistory }: SalesHistoryListProps)
 				header: ({ column }) => (
 					<Button
 						variant='ghost'
-						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-						className='text-right w-full justify-end'>
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
 						Total <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => <div className='text-right'>{(row.getValue('grandTotal') as number).toFixed(2)}</div>,
+				cell: ({ row }) => (row.original.grandTotal as number).toFixed(2),
 			},
 			{
 				accessorKey: 'paymentStatus',
@@ -119,12 +95,12 @@ export function SalesHistoryList({ initialSalesHistory }: SalesHistoryListProps)
 						Payment Status <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => row.getValue('paymentStatus'),
+				cell: ({ row }) => row.original.paymentStatus,
 			},
 			{
 				id: 'actions',
 				header: () => <div className='text-right'>Actions</div>,
-				cell: ({ row }: { row: { original: SaleWithBasicRelations } }) => (
+				cell: ({ row }) => (
 					<div className='text-right'>
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
@@ -136,10 +112,11 @@ export function SalesHistoryList({ initialSalesHistory }: SalesHistoryListProps)
 								</Button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align='end'>
-								<DropdownMenuItem asChild>
-									<Link href={`/sales/${row.original.id}`}>
-										<Eye className='mr-2 h-4 w-4' /> View Invoice
-									</Link>
+								<DropdownMenuLabel>Actions</DropdownMenuLabel>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem onClick={() => router.push(`/sales/${row.original.id}`)}>
+									<Eye className='mr-2 h-4 w-4' />
+									View Invoice
 								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
@@ -147,61 +124,97 @@ export function SalesHistoryList({ initialSalesHistory }: SalesHistoryListProps)
 				),
 			},
 		],
-		[] // No external dependencies for these columns currently, but add if any arise
+		[router]
 	)
 
-	const currentSalesHistory = salesHistory || []
+	useEffect(() => {
+		if (periodFilter && periodFilter !== period) setPeriod(periodFilter)
+		// Optionally reset pagination or search here if needed
+	}, [periodFilter])
 
-	const table = useReactTable({
-		data: currentSalesHistory,
-		columns,
-		getCoreRowModel: getCoreRowModel(),
-		onSortingChange: setSorting,
-		getSortedRowModel: getSortedRowModel(),
-		state: { sorting },
-	})
-
-	if (isLoading && !salesHistory) return <div>Loading sales history...</div>
 	if (error) return <div className='text-red-600'>Error: {error.message}</div>
 
-	if (currentSalesHistory.length === 0) {
-		return <p>No sales records found.</p>
-	}
+	const isAnyFilterActive = !!search || period !== 'all_time'
 
 	return (
-		<div className='rounded-md border'>
-			<Table>
-				<TableHeader>
-					{table.getHeaderGroups().map(headerGroup => (
-						<TableRow key={headerGroup.id}>
-							{headerGroup.headers.map(header => (
-								<TableHead key={header.id}>{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}</TableHead>
-							))}
-						</TableRow>
-					))}
-				</TableHeader>
-				<TableBody>
-					{table.getRowModel().rows?.length ? (
-						table.getRowModel().rows.map(row => (
-							<TableRow
-								key={row.id}
-								data-state={row.getIsSelected() && 'selected'}>
-								{row.getVisibleCells().map(cell => (
-									<TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-								))}
-							</TableRow>
-						))
-					) : (
-						<TableRow>
-							<TableCell
-								colSpan={columns.length}
-								className='h-24 text-center'>
-								No results.
-							</TableCell>
-						</TableRow>
-					)}
-				</TableBody>
-			</Table>
+		<div className='w-full'>
+			<div className='mb-4 flex flex-wrap items-center gap-2 rounded-md border p-4'>
+				{isLoading ? (
+					<Skeleton className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-2xs' />
+				) : (
+					<Input
+						placeholder='Search invoice #, customer, staff...'
+						value={search}
+						onChange={event => {
+							setSearch(event.target.value)
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-sm'
+					/>
+				)}
+				<div className='flex gap-2'>
+					<Button
+						variant={period === 'today' ? 'default' : 'outline'}
+						onClick={() => {
+							setPeriod('today')
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						size='sm'>
+						Today
+					</Button>
+					<Button
+						variant={period === 'this_month' ? 'default' : 'outline'}
+						onClick={() => {
+							setPeriod('this_month')
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						size='sm'>
+						This Month
+					</Button>
+					<Button
+						variant={period === 'this_year' ? 'default' : 'outline'}
+						onClick={() => {
+							setPeriod('this_year')
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						size='sm'>
+						This Year
+					</Button>
+					<Button
+						variant={period === 'all_time' ? 'default' : 'outline'}
+						onClick={() => {
+							setPeriod('all_time')
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						size='sm'>
+						All Time
+					</Button>
+				</div>
+				{isAnyFilterActive && (
+					<Button
+						variant='ghost'
+						onClick={() => {
+							setSearch('')
+							setPeriod('all_time')
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						className='h-10'>
+						Reset
+					</Button>
+				)}
+			</div>
+
+			<CustomDataTable
+				columns={columns}
+				data={sales}
+				isLoading={isLoading}
+				noResultsMessage='No results.'
+				sorting={sorting}
+				onSortingChange={setSorting}
+				pagination={pagination}
+				onPaginationChange={setPagination}
+				pageCount={Math.ceil(total / pagination.pageSize)}
+			/>
 		</div>
 	)
 }

@@ -5,12 +5,34 @@ import { reportCategorySchema } from '@/lib/validations/report-category'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
 
-export async function GET() {
+const paginationSchema = z.object({
+	page: z.coerce.number().min(1).default(1),
+	limit: z.coerce.number().min(1).max(100).default(10),
+	search: z.string().optional(),
+})
+
+export async function GET(req: Request) {
 	try {
-		const categories = await db.reportCategory.findMany({
-			orderBy: { name: 'asc' },
-		})
-		return NextResponse.json(categories)
+		const url = new URL(req.url)
+		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
+		const { page, limit, search } = params
+
+		const where: any = {}
+		if (search) {
+			where.name = { contains: search, mode: 'insensitive' }
+		}
+
+		const [categories, total] = await Promise.all([
+			db.reportCategory.findMany({
+				where,
+				orderBy: { name: 'asc' },
+				skip: (page - 1) * limit,
+				take: limit,
+			}),
+			db.reportCategory.count({ where }),
+		])
+
+		return NextResponse.json({ categories, total })
 	} catch (error) {
 		console.error('[REPORT_CATEGORIES_GET]', error)
 		return new NextResponse('Internal Server Error', { status: 500 })

@@ -62,12 +62,12 @@ export function NavUser({
 							</div>
 						</DropdownMenuLabel>
 						<DropdownMenuSeparator />
-						<DropdownMenuGroup>
+						{/* <DropdownMenuGroup>
 							<DropdownMenuItem>
 								<Sparkles />
 								Upgrade to Pro
 							</DropdownMenuItem>
-						</DropdownMenuGroup>
+						</DropdownMenuGroup> */}
 						<DropdownMenuSeparator />
 						<DropdownMenuGroup>
 							{/* Updated Account DropdownMenuItem to link to /account */}
@@ -77,14 +77,14 @@ export function NavUser({
 									<span>Account</span>
 								</Link>
 							</DropdownMenuItem>
-							<DropdownMenuItem>
+							{/* <DropdownMenuItem>
 								<CreditCard />
 								Billing
 							</DropdownMenuItem>
 							<DropdownMenuItem>
 								<Bell />
 								Notifications
-							</DropdownMenuItem>
+							</DropdownMenuItem> */}
 						</DropdownMenuGroup>
 						<DropdownMenuSeparator />
 						{/* Add onClick handler to trigger signOut */}

@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect } from 'react' // useEffect for resetting form
-import { Control, SubmitHandler, useForm } from 'react-hook-form'
+import { useEffect } from 'react'
+import { SubmitHandler, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { format } from 'date-fns'
 import { CalendarIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import * as z from 'zod' // Import z directly if needed for type inference
+import * as z from 'zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { itemSchema } from '@/lib/validations/item'
@@ -21,59 +21,59 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
-// Consider adding a multi-select component if needed for categories
-// import { MultiSelect } from "@/components/ui/multi-select";
+
+// --- Types and Props ---
 
 interface ItemFormProps {
-	itemData?: ItemWithRelations | null // Pass item data for editing
+	itemData?: ItemWithRelations | null
 	categories: BasicCategory[]
 	suppliers: BasicSupplier[]
-	onSuccess: () => void // Simpler callback, data will be refetched by query invalidation
+	onSuccess: () => void
 }
 
-// Infer the type from the Zod schema
 type ItemFormValues = z.infer<typeof itemSchema>
 
-// Define query keys (can be imported from a central place if shared)
+// --- Query Keys ---
+
 const itemQueryKeys = {
 	all: ['items'] as const,
 	lists: () => [...itemQueryKeys.all, 'list'] as const,
 }
 
-// API function for creating/updating an item
+// --- API Call ---
+
 async function saveItemAPI(payload: { values: ItemFormValues; itemId?: string }): Promise<ItemWithRelations> {
 	const { values, itemId } = payload
 	const isEditing = !!itemId
 	const url = isEditing ? `/api/inv-items/${itemId}` : '/api/inv-items'
 	const method = isEditing ? 'PATCH' : 'POST'
 
-	// Prepare payload, ensuring correct types and handling potential conversions
-	// The form values should already align with ItemFormValues due to react-hook-form and Zod.
-	// Dates are already Date objects or null from the form.
-	// Numbers are already numbers or null/undefined from the form.
-	// thumbnailUrls and categoryIds are already string[].
 	const apiPayload = {
 		...values,
 		expiry_date: values.expiry_date ? values.expiry_date.toISOString() : null,
 		purchase_date: values.purchase_date ? values.purchase_date.toISOString() : null,
 	}
 
-	const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(apiPayload) })
+	const response = await fetch(url, {
+		method,
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(apiPayload),
+	})
 	const result = await response.json()
 	if (!response.ok) {
-		// Try to parse error message from server response
 		const errorMessage = result?.message || result?.error || `Failed to ${isEditing ? 'update' : 'create'} item`
 		throw new Error(errorMessage)
 	}
 	return result as ItemWithRelations
 }
 
+// --- Main Form Component ---
+
 export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFormProps) {
 	const isEditing = !!itemData
 	const queryClient = useQueryClient()
 
-	const form = useForm({
-		// Explicitly type useForm
+	const form = useForm<ItemFormValues>({
 		resolver: zodResolver(itemSchema),
 		defaultValues: {
 			name: itemData?.name ?? '',
@@ -85,9 +85,9 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 			schedule: itemData?.schedule ?? undefined,
 			description: itemData?.description ?? undefined,
 			image: itemData?.image ?? '',
-			thumbnailUrls: itemData?.thumbnailUrls ?? [], // Ensure it's always string[]
+			thumbnailUrls: itemData?.thumbnailUrls ?? [],
 			units_per_pack: itemData?.units_per_pack ?? null,
-			price: itemData?.price ?? undefined, // Use undefined for required number fields initially if desired
+			price: itemData?.price ?? undefined,
 			tax_rate: itemData?.tax_rate ?? null,
 			discount: itemData?.discount ?? null,
 			reorder_level: itemData?.reorder_level ?? null,
@@ -97,12 +97,12 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 			expiry_date: itemData?.expiry_date ? new Date(itemData.expiry_date) : null,
 			purchase_price: itemData?.purchase_price ?? null,
 			purchase_date: itemData?.purchase_date ? new Date(itemData.purchase_date) : null,
-			categoryIds: itemData?.categories?.map(cat => cat.id) ?? [], // Ensure it's always string[]
+			categoryIds: itemData?.categories?.map(cat => cat.id) ?? [],
 			supplierId: itemData?.supplierId ?? null,
 		},
 	})
 
-	// Reset form when itemData changes (e.g., when opening sheet for a new item after editing)
+	// Reset form when editing a different item or switching to add mode
 	useEffect(() => {
 		form.reset({
 			name: itemData?.name ?? '',
@@ -131,15 +131,12 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 		})
 	}, [itemData, form])
 
-	const onSubmit: SubmitHandler<ItemFormValues> = async values => {
-		itemMutation.mutate({ values, itemId: itemData?.id })
-	}
-
 	const itemMutation = useMutation({
 		mutationFn: saveItemAPI,
 		onSuccess: () => {
 			toast.success(`Item ${isEditing ? 'updated' : 'created'} successfully!`)
-			queryClient.invalidateQueries({ queryKey: itemQueryKeys.lists() })
+			// Invalidate all queries whose key starts with ['items', 'list']
+			queryClient.invalidateQueries({ queryKey: ['items', 'list'] })
 			onSuccess()
 		},
 		onError: (error: Error) => {
@@ -148,17 +145,19 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 		},
 	})
 
+	const onSubmit: SubmitHandler<ItemFormValues> = values => {
+		itemMutation.mutate({ values, itemId: itemData?.id })
+	}
+
 	return (
 		<Form {...form}>
-			{/* Use onSubmit from react-hook-form */}
 			<form
-				onSubmit={form.handleSubmit(onSubmit)}
+				onSubmit={form.handleSubmit(onSubmit) as (e?: React.BaseSyntheticEvent) => Promise<void>}
 				className='space-y-6 p-4 md:p-6'>
-				{/* Group related fields using divs or fieldsets */}
+				{/* --- Required Fields --- */}
 				<div className='grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-2'>
-					{/* --- Required Fields --- */}
-					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+					<FormField<ItemFormValues>
+						control={form.control}
 						name='name'
 						render={({ field }) => (
 							<FormItem>
@@ -174,7 +173,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 						)}
 					/>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='price'
 						render={({ field }) => (
 							<FormItem>
@@ -185,7 +184,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 										step='0.01'
 										placeholder='0.00'
 										{...field}
-										onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))} // Allow undefined for validation
+										onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
 										value={field.value ?? ''}
 									/>
 								</FormControl>
@@ -195,116 +194,41 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 					/>
 				</div>
 
+				{/* --- Optional Text Fields --- */}
 				<div className='grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-3'>
-					{/* --- Optional Text Fields --- */}
-					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
-						name='manufacturer'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Manufacturer</FormLabel>
-								<FormControl>
-									<Input
-										placeholder='e.g., Pharma Inc.'
-										{...field}
-										value={field.value ?? ''}
-									/>
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
-						name='generic_name'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Generic Name</FormLabel>
-								<FormControl>
-									<Input
-										placeholder='e.g., Acetaminophen'
-										{...field}
-										value={field.value ?? ''}
-									/>
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
-						name='formulation'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Formulation</FormLabel>
-								<FormControl>
-									<Input
-										placeholder='e.g., Tablet, Syrup'
-										{...field}
-										value={field.value ?? ''}
-									/>
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
-						name='strength'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Strength</FormLabel>
-								<FormControl>
-									<Input
-										placeholder='e.g., 500mg, 10mg/5ml'
-										{...field}
-										value={field.value ?? ''}
-									/>
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
-						name='unit'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Unit</FormLabel>
-								<FormControl>
-									<Input
-										placeholder='e.g., mg, ml, pcs'
-										{...field}
-										value={field.value ?? ''}
-									/>
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
-					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
-						name='schedule'
-						render={({ field }) => (
-							<FormItem>
-								<FormLabel>Schedule</FormLabel>
-								<FormControl>
-									<Input
-										placeholder='e.g., H, G'
-										{...field}
-										value={field.value ?? ''}
-									/>
-								</FormControl>
-								<FormMessage />
-							</FormItem>
-						)}
-					/>
+					{[
+						{ name: 'manufacturer', label: 'Manufacturer', placeholder: 'e.g., Pharma Inc.' },
+						{ name: 'generic_name', label: 'Generic Name', placeholder: 'e.g., Acetaminophen' },
+						{ name: 'formulation', label: 'Formulation', placeholder: 'e.g., Tablet, Syrup' },
+						{ name: 'strength', label: 'Strength', placeholder: 'e.g., 500mg, 10mg/5ml' },
+						{ name: 'unit', label: 'Unit', placeholder: 'e.g., mg, ml, pcs' },
+						{ name: 'schedule', label: 'Schedule', placeholder: 'e.g., H, G' },
+					].map(({ name, label, placeholder }) => (
+						<FormField
+							key={name}
+							control={form.control}
+							name={name as keyof ItemFormValues}
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>{label}</FormLabel>
+									<FormControl>
+										<Input
+											placeholder={placeholder}
+											{...field}
+											value={field.value ?? ''}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+					))}
 				</div>
 
+				{/* --- Optional Number Fields --- */}
 				<div className='grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-3'>
-					{/* --- Optional Number Fields --- */}
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='quantity_in_stock'
 						render={({ field }) => (
 							<FormItem>
@@ -324,7 +248,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 						)}
 					/>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='units_per_pack'
 						render={({ field }) => (
 							<FormItem>
@@ -344,7 +268,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 						)}
 					/>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='reorder_level'
 						render={({ field }) => (
 							<FormItem>
@@ -364,7 +288,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 						)}
 					/>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='purchase_price'
 						render={({ field }) => (
 							<FormItem>
@@ -384,7 +308,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 						)}
 					/>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='tax_rate'
 						render={({ field }) => (
 							<FormItem>
@@ -395,9 +319,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 										step='0.01'
 										placeholder='e.g., 5 for 5%'
 										{...field}
-										// Store as decimal (e.g., 0.05 for 5%)
 										onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value) / 100)}
-										// Display as percentage
 										value={field.value != null ? field.value * 100 : ''}
 									/>
 								</FormControl>
@@ -406,7 +328,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 						)}
 					/>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='discount'
 						render={({ field }) => (
 							<FormItem>
@@ -417,9 +339,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 										step='0.01'
 										placeholder='e.g., 10 for 10%'
 										{...field}
-										// Store as decimal (e.g., 0.1 for 10%)
 										onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value) / 100)}
-										// Display as percentage
 										value={field.value != null ? field.value * 100 : ''}
 									/>
 								</FormControl>
@@ -431,7 +351,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 
 				{/* --- Description & URLs --- */}
 				<FormField
-					control={form.control as unknown as Control<ItemFormValues>}
+					control={form.control}
 					name='description'
 					render={({ field }) => (
 						<FormItem>
@@ -450,7 +370,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 				/>
 				<div className='grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-2'>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='image'
 						render={({ field }) => (
 							<FormItem>
@@ -468,7 +388,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 						)}
 					/>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='thumbnailUrls'
 						render={({ field }) => (
 							<FormItem>
@@ -478,7 +398,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 										placeholder='https://example.com/thumb1.jpg&#10;https://example.com/thumb2.jpg'
 										rows={3}
 										value={Array.isArray(field.value) ? field.value.join('\n') : ''}
-										onChange={e => field.onChange(e.target.value.split('\n').filter((url: string) => url.trim() !== ''))}
+										onChange={e => field.onChange(e.target.value.split('\n').filter(url => url.trim() !== ''))}
 									/>
 								</FormControl>
 								<FormDescription>Enter each URL on a new line.</FormDescription>
@@ -491,15 +411,14 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 				{/* --- Relations --- */}
 				<div className='grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-2'>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='supplierId'
 						render={({ field }) => (
 							<FormItem>
 								<FormLabel>Supplier</FormLabel>
 								<Select
-									onValueChange={value => field.onChange(value === 'none' ? null : value)} // Handle 'none' selection
-									value={field.value ?? 'none'} // Use 'none' for the placeholder value
-								>
+									onValueChange={value => field.onChange(value === 'none' ? null : value)}
+									value={field.value ?? 'none'}>
 									<FormControl>
 										<SelectTrigger>
 											<SelectValue placeholder='Select a supplier' />
@@ -520,9 +439,8 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 							</FormItem>
 						)}
 					/>
-					{/* Category Multi-Select Placeholder - Replace with actual component */}
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='categoryIds'
 						render={({}) => (
 							<FormItem>
@@ -532,25 +450,21 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 									{categories.map(category => (
 										<FormField
 											key={category.id}
-											control={form.control as unknown as Control<ItemFormValues>}
+											control={form.control}
 											name='categoryIds'
-											render={({ field: subField }) => {
-												return (
-													<FormItem
-														key={category.id}
-														className='flex flex-row items-start space-x-3 space-y-0 py-1'>
-														<FormControl>
-															<Checkbox
-																checked={subField.value?.includes(category.id)}
-																onCheckedChange={checked => {
-																	return checked ? subField.onChange([...(subField.value ?? []), category.id]) : subField.onChange(subField.value?.filter(value => value !== category.id))
-																}}
-															/>
-														</FormControl>
-														<FormLabel className='text-sm font-normal'>{category.name}</FormLabel>
-													</FormItem>
-												)
-											}}
+											render={({ field: subField }) => (
+												<FormItem
+													key={category.id}
+													className='flex flex-row items-start space-x-3 space-y-0 py-1'>
+													<FormControl>
+														<Checkbox
+															checked={subField.value?.includes(category.id)}
+															onCheckedChange={checked => (checked ? subField.onChange([...(subField.value ?? []), category.id]) : subField.onChange(subField.value?.filter(value => value !== category.id)))}
+														/>
+													</FormControl>
+													<FormLabel className='text-sm font-normal'>{category.name}</FormLabel>
+												</FormItem>
+											)}
 										/>
 									))}
 								</div>
@@ -563,7 +477,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 				{/* --- Dates --- */}
 				<div className='grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-2'>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='expiry_date'
 						render={({ field }) => (
 							<FormItem className='flex flex-col'>
@@ -572,7 +486,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 									<PopoverTrigger asChild>
 										<FormControl>
 											<Button
-												variant={'outline'}
+												variant='outline'
 												className={cn('w-full justify-start text-left font-normal', !field.value && 'text-muted-foreground')}>
 												{field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
 												<CalendarIcon className='ml-auto h-4 w-4 opacity-50' />
@@ -585,7 +499,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 										<Calendar
 											mode='single'
 											selected={field.value ?? undefined}
-											onSelect={date => field.onChange(date ?? null)} // Ensure null is passed if date is cleared
+											onSelect={date => field.onChange(date ?? null)}
 											initialFocus
 										/>
 									</PopoverContent>
@@ -595,18 +509,18 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 						)}
 					/>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='purchase_date'
-						render={() => (
+						render={({ field }) => (
 							<FormItem className='flex flex-col'>
 								<FormLabel>Purchase Date</FormLabel>
 								<Popover>
 									<PopoverTrigger asChild>
 										<FormControl>
 											<Button
-												variant={'outline'}
-												className={cn('w-full justify-start text-left font-normal')}>
-												Pick a date
+												variant='outline'
+												className={cn('w-full justify-start text-left font-normal', !field.value && 'text-muted-foreground')}>
+												{field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
 												<CalendarIcon className='ml-auto h-4 w-4 opacity-50' />
 											</Button>
 										</FormControl>
@@ -616,6 +530,8 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 										align='start'>
 										<Calendar
 											mode='single'
+											selected={field.value ?? undefined}
+											onSelect={date => field.onChange(date ?? null)}
 											initialFocus
 										/>
 									</PopoverContent>
@@ -629,7 +545,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 				{/* --- Status Flags --- */}
 				<div className='flex items-center space-x-6 pt-2'>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='isActive'
 						render={({ field }) => (
 							<FormItem className='flex flex-row items-center space-x-2'>
@@ -649,7 +565,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 						)}
 					/>
 					<FormField
-						control={form.control as unknown as Control<ItemFormValues>}
+						control={form.control}
 						name='isAvailable'
 						render={({ field }) => (
 							<FormItem className='flex flex-row items-center space-x-2'>
@@ -672,8 +588,6 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 
 				{/* --- Submission Button --- */}
 				<div className='flex justify-end pt-4'>
-					{/* Add Cancel button if needed */}
-					{/* <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>Cancel</Button> */}
 					<Button
 						type='submit'
 						disabled={itemMutation.isPending}

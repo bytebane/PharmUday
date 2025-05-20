@@ -6,12 +6,6 @@ import { itemPatchSchema } from '@/lib/validations/item'
 import { getCurrentUser } from '@/lib/auth' // Replace with your session logic
 import { Role } from '@/generated/prisma' // Import Role enum
 
-interface RouteContext {
-	params: {
-		id: string // Correct parameter name based on file name [id]
-	}
-}
-
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const { id } = await params // Use id

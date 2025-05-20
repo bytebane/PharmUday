@@ -1,8 +1,10 @@
 'use client'
 
 import * as React from 'react'
+
+import { useRouter, usePathname } from 'next/navigation' // Import useRouter and usePathname
 import { useSession } from 'next-auth/react'
-import { AudioWaveform, LayoutDashboard, Box, Command, GalleryVerticalEnd, Moon, Sun, ChevronsUpDown, FileChartColumnIncreasing, FolderKanban, Users as UsersIcon } from 'lucide-react'
+import { LayoutDashboard, Box, Moon, Sun, ChevronsUpDown, FileChartColumnIncreasing, FolderKanban, Users as UsersIcon, Loader2 } from 'lucide-react'
 import { useTheme } from 'next-themes' // Import useTheme
 
 import { Role } from '@/generated/prisma' // Adjust path if necessary
@@ -22,20 +24,20 @@ const data = {
 	},
 	stores: [
 		{
-			name: 'Acme Inc',
-			logo: GalleryVerticalEnd,
+			name: 'PharmPilot',
+			logo: '/ppilot.png',
 			plan: 'Enterprise',
 		},
-		{
-			name: 'Acme Corp.',
-			logo: AudioWaveform,
-			plan: 'Startup',
-		},
-		{
-			name: 'Evil Corp.',
-			logo: Command,
-			plan: 'Free',
-		},
+		// {
+		// 	name: 'Acme Corp.',
+		// 	logo: AudioWaveform,
+		// 	plan: 'Startup',
+		// },
+		// {
+		// 	name: 'Evil Corp.',
+		// 	logo: Command,
+		// 	plan: 'Free',
+		// },
 	],
 	navMainBase: [
 		// Renamed to avoid conflict if you want to compute navMain dynamically
@@ -120,6 +122,10 @@ const data = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const { data: session, status } = useSession() // Get session data and status
 	const { theme, setTheme } = useTheme() // Get theme state and setter
+	const router = useRouter()
+	const pathname = usePathname()
+	const [isNavigating, startTransition] = React.useTransition()
+	const [navigatingTo, setNavigatingTo] = React.useState<string | null>(null)
 
 	// Define user data based on session or provide defaults/loading state
 	const userData = {
@@ -129,16 +135,45 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		avatar: session?.user?.image ?? '', // Auth.js uses 'image' by default
 	}
 
+	const handleNavigation = React.useCallback(
+		(url: string) => {
+			if (pathname === url || url === '#') return // Don't navigate if already on the page or it's a placeholder
+
+			setNavigatingTo(url)
+			startTransition(() => {
+				router.push(url)
+			})
+		},
+		[pathname, router, startTransition]
+	)
+
+	React.useEffect(() => {
+		// Clear navigatingTo when the actual pathname changes (navigation completes)
+		// or when isNavigating becomes false (transition ended, possibly before pathname update if error)
+		if (navigatingTo && (pathname === navigatingTo || !isNavigating)) {
+			setNavigatingTo(null)
+		}
+	}, [pathname, navigatingTo, isNavigating])
+
 	// Filter nav items based on user role
 	const filteredNavMain = React.useMemo(() => {
 		if (!session?.user?.role) return [] // Or return a default set for unauthenticated/loading
 		const userRole = session.user.role
-		return data.navMainBase
-			.filter(item => {
-				return !item.requiredRoles || item.requiredRoles.includes(userRole as Role)
-			})
-			.map(item => ({ ...item, isActive: item.url === '#' || (typeof window !== 'undefined' && window.location.pathname.startsWith(item.url)) })) // Basic isActive logic
-	}, [session?.user?.role])
+
+		const processItems = (items: typeof data.navMainBase): any[] => {
+			return items
+				.filter(item => {
+					return !item.requiredRoles || item.requiredRoles.includes(userRole as Role)
+				})
+				.map(item => {
+					const isCurrentNavigationTarget = isNavigating && navigatingTo === item.url
+					const actualIcon = isCurrentNavigationTarget ? Loader2 : item.icon
+					const iconClassName = isCurrentNavigationTarget ? 'animate-spin' : ''
+					return { ...item, icon: actualIcon, iconClassName, onClick: () => handleNavigation(item.url), disabled: isCurrentNavigationTarget, items: item.items ? processItems(item.items as any) : undefined, isActive: item.url !== '#' && pathname.startsWith(item.url) }
+				})
+		}
+		return processItems(data.navMainBase)
+	}, [session?.user?.role, pathname, handleNavigation, isNavigating, navigatingTo])
 
 	// Optional: Show skeleton while loading session
 	if (status === 'loading') {

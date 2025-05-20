@@ -1,21 +1,38 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-
 import { db } from '@/lib/db'
 import { supplierSchema } from '@/lib/validations/supplier'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
 
-export async function GET() {
-	try {
-		// Optional: Add pagination, filtering, sorting later
-		const suppliers = await db.supplier.findMany({
-			orderBy: {
-				name: 'asc',
-			},
-		})
+const paginationSchema = z.object({
+	page: z.coerce.number().min(1).default(1),
+	limit: z.coerce.number().min(1).max(100).default(10),
+	search: z.string().optional(),
+})
 
-		return NextResponse.json(suppliers)
+export async function GET(req: Request) {
+	try {
+		const url = new URL(req.url)
+		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
+		const { page, limit, search } = params
+
+		const where: any = {}
+		if (search) {
+			where.OR = [{ name: { contains: search, mode: 'insensitive' } }, { contactPerson: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }, { phone: { contains: search, mode: 'insensitive' } }]
+		}
+
+		const [suppliers, total] = await Promise.all([
+			db.supplier.findMany({
+				where,
+				orderBy: { name: 'asc' },
+				skip: (page - 1) * limit,
+				take: limit,
+			}),
+			db.supplier.count({ where }),
+		])
+
+		return NextResponse.json({ suppliers, total })
 	} catch (error) {
 		console.error('[SUPPLIERS_GET]', error)
 		return new NextResponse('Internal Server Error', { status: 500 })

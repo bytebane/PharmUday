@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db' // Your Prisma client
 import { getCurrentUser } from '@/lib/auth' // Your authentication helper
 import { Role } from '@/generated/prisma' // Your Role enum
+import { getTodayRange, getThisMonthRange, getThisYearRange } from '@/lib/utils/date-utils' // Import date utils
 
 // Define the expected structure for the stats, matching your frontend DashboardStats interface
 interface DashboardStats {
@@ -24,29 +25,6 @@ export async function GET() {
 		const user = await getCurrentUser()
 		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
 			return new NextResponse('Unauthorized', { status: 401 })
-		}
-
-		// --- Helper functions for date ranges ---
-		const getTodayRange = () => {
-			const start = new Date()
-			start.setHours(0, 0, 0, 0)
-			const end = new Date(start)
-			end.setDate(start.getDate() + 1)
-			return { start, end }
-		}
-
-		const getThisMonthRange = () => {
-			const now = new Date()
-			const start = new Date(now.getFullYear(), now.getMonth(), 1)
-			const end = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-			return { start, end }
-		}
-
-		const getThisYearRange = () => {
-			const now = new Date()
-			const start = new Date(now.getFullYear(), 0, 1)
-			const end = new Date(now.getFullYear() + 1, 0, 1)
-			return { start, end }
 		}
 
 		const todayRange = getTodayRange()
@@ -91,10 +69,17 @@ export async function GET() {
 			},
 		})
 
+		const expiredCount = await db.item.count({
+			where: {
+				expiry_date: { lt: new Date() },
+			},
+		})
+
 		const itemStats = {
 			expiringSoonCount: expiringSoonCount,
 			outOfStockCount: outOfStockCount,
 			totalItemCount: totalItemCount,
+			expiredCount: expiredCount, // Include expired count if needed
 		}
 
 		// --- Calculate Periodic Sales Stats ---

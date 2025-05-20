@@ -1,66 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { ItemWithRelations, BasicCategory, BasicSupplier } from '@/types/inventory' // Adjust path as needed
+import { ItemWithRelations, BasicCategory, BasicSupplier } from '@/types/inventory'
 import { Role } from '@/generated/prisma'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet' // Import Sheet components
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { PlusCircle, Edit, Trash2, MoreHorizontal, ArrowUpDown } from 'lucide-react'
-import { toast } from 'sonner' // Assuming you use sonner for toasts
-import { ItemForm } from './item-form' // Import the new form component
+import { Edit, Trash2, MoreHorizontal, ArrowUpDown } from 'lucide-react'
+import { toast } from 'sonner'
+import { ItemForm } from './item-form'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-	ColumnDef,
-	flexRender,
-	getCoreRowModel,
-	useReactTable,
-	// To add more features later:
-	FilterFn,
-	getSortedRowModel,
-	SortingState,
-	getFilteredRowModel,
-	ColumnFiltersState,
-	getFacetedRowModel, // Useful for some filter scenarios
-	// getFacetedRowModel,
-	// getPaginationRowModel,
-} from '@tanstack/react-table'
-import React from 'react'
+import { ColumnDef, FilterFn, SortingState, ColumnFiltersState, PaginationState } from '@tanstack/react-table'
 import { DialogTitle } from '@/components/ui/dialog'
-
-// API interaction functions (could be moved to a service file)
+import { CustomDataTable } from '@/components/custom/custom-data-table'
+import { fetchItems_cli, fetchRelatedInventoryData_cli, deleteItem_cli } from '@/services/inventoryService'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-const fetchItemsAPI = async (): Promise<ItemWithRelations[]> => {
-	const response = await fetch('/api/inv-items')
-	if (!response.ok) {
-		throw new Error('Failed to fetch items')
-	}
-	return response.json()
-}
+import { Skeleton } from '@/components/ui/skeleton'
+import { AddFAB } from '@/components/AddFAB'
 
-async function fetchRelatedDataAPI(): Promise<{ categories: BasicCategory[]; suppliers: BasicSupplier[] }> {
-	const [catRes, supRes] = await Promise.all([fetch('/api/inv-categories'), fetch('/api/suppliers')])
-	if (!catRes.ok || !supRes.ok) {
-		// Added check for supRes.ok
-		throw new Error('Failed to fetch related data')
-	}
-	const categories = await catRes.json()
-	const suppliers = await supRes.json()
-	return { categories, suppliers }
-}
-
-async function deleteItemAPI(id: string): Promise<void> {
-	const response = await fetch(`/api/inv-items/${id}`, { method: 'DELETE' })
-	if (!response.ok) {
-		const errorData = await response.text()
-		throw new Error(`Failed to delete item: ${errorData || response.statusText}`)
-	}
-}
-
-// Define query keys
 const itemQueryKeys = {
 	all: ['items'] as const,
 	lists: () => [...itemQueryKeys.all, 'list'] as const,
@@ -69,31 +28,42 @@ const itemQueryKeys = {
 }
 
 interface ItemListProps {
-	initialItems: ItemWithRelations[]
-	initialCategories: BasicCategory[]
-	initialSuppliers: BasicSupplier[]
+	statusFilter?: string
 }
 
-export function ItemList({ initialItems, initialCategories, initialSuppliers }: ItemListProps) {
+export function ItemList({ statusFilter }: ItemListProps) {
+	// Session and state
 	const { data: session } = useSession()
-	const [isSheetOpen, setIsSheetOpen] = useState(false) // State for Sheet visibility
-	const [editingItem, setEditingItem] = useState<ItemWithRelations | null>(null)
 	const queryClient = useQueryClient()
-	const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
-	const [globalFilter, setGlobalFilter] = React.useState('')
-	const [sorting, setSorting] = React.useState<SortingState>([])
 
-	const canModify = session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST
+	// Table state
+	const [isSheetOpen, setIsSheetOpen] = useState(false)
+	const [editingItem, setEditingItem] = useState<ItemWithRelations | null>(null)
+	const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
+	const [sorting, setSorting] = useState<SortingState>([])
+	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => {
+		const filters: ColumnFiltersState = []
+		if (statusFilter === 'expiring_soon') filters.push({ id: 'expiry_date', value: 'expiring_soon' })
+		else if (statusFilter === 'out_of_stock') filters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
+		return filters
+	})
+	const [globalFilter, setGlobalFilter] = useState('')
+	const [filters, setFilters] = useState<{ status?: string; categoryId?: string; supplierId?: string; search?: string }>(() => ({
+		status: statusFilter,
+	}))
 
+	// Data fetching
 	const {
-		data: items,
+		data,
 		isLoading: isLoadingItems,
 		error: itemsError,
-	} = useQuery<ItemWithRelations[], Error>({
-		queryKey: itemQueryKeys.lists(),
-		queryFn: fetchItemsAPI,
-		initialData: initialItems, // Hydrate with server-fetched data
+	} = useQuery<{ items: ItemWithRelations[]; total: number }, Error>({
+		queryKey: ['items', 'list', pagination.pageIndex, pagination.pageSize, filters],
+		queryFn: () => fetchItems_cli(pagination.pageIndex + 1, pagination.pageSize, filters),
 	})
+
+	const items = data?.items ?? []
+	const total = data?.total ?? 0
 
 	const {
 		data: relatedData,
@@ -101,32 +71,36 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 		error: relatedError,
 	} = useQuery<{ categories: BasicCategory[]; suppliers: BasicSupplier[] }, Error>({
 		queryKey: itemQueryKeys.relatedData(),
-		queryFn: fetchRelatedDataAPI,
-		initialData: { categories: initialCategories, suppliers: initialSuppliers }, // Hydrate
+		queryFn: fetchRelatedInventoryData_cli,
 	})
 
+	const currentCategories = relatedData?.categories || []
+	const currentSuppliers = relatedData?.suppliers || []
+
+	// Mutations
 	const deleteMutation = useMutation({
-		mutationFn: deleteItemAPI,
+		mutationFn: deleteItem_cli,
 		onSuccess: () => {
 			toast.success('Item deleted successfully.')
-			queryClient.invalidateQueries({ queryKey: itemQueryKeys.lists() })
+			queryClient.invalidateQueries({ queryKey: ['items', 'list'] })
 		},
 		onError: (err: Error) => {
 			toast.error(err.message || 'Failed to delete item.')
 		},
 	})
 
-	const handleEdit = React.useCallback((item: ItemWithRelations) => {
+	// Handlers
+	const handleEdit = useCallback((item: ItemWithRelations) => {
 		setEditingItem(item)
 		setIsSheetOpen(true)
 	}, [])
 
-	const handleAddNew = React.useCallback(() => {
+	const handleAddNew = useCallback(() => {
 		setEditingItem(null)
 		setIsSheetOpen(true)
 	}, [])
 
-	const handleDelete = React.useCallback(
+	const handleDelete = useCallback(
 		(id: string) => {
 			if (!confirm('Are you sure you want to delete this item?')) return
 			deleteMutation.mutate(id)
@@ -134,112 +108,126 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 		[deleteMutation]
 	)
 
-	// This function will be called by ItemForm on successful submission
-	const handleFormSuccess = React.useCallback(() => {
-		setIsSheetOpen(false) // Close sheet on success
-		setEditingItem(null) // Reset editing item
-		// Queries will be invalidated by the ItemForm's mutation
+	const handleFormSuccess = useCallback(() => {
+		setIsSheetOpen(false)
+		setEditingItem(null)
 	}, [])
 
-	const globalFilterFn: FilterFn<ItemWithRelations> = React.useCallback((row, columnId, filterValue) => {
+	// Table columns
+	const globalFilterFn: FilterFn<ItemWithRelations> = useCallback((row, _columnId, filterValue) => {
 		const searchTerm = String(filterValue).toLowerCase()
 		if (!searchTerm) return true
-
-		const name = String(row.original.name).toLowerCase()
-		const genericName = String(row.original.generic_name || '').toLowerCase()
-		const manufacturer = String(row.original.manufacturer || '').toLowerCase()
-		const description = String(row.original.description || '').toLowerCase()
-
-		return name.includes(searchTerm) || genericName.includes(searchTerm) || manufacturer.includes(searchTerm) || description.includes(searchTerm)
+		const { name, generic_name, manufacturer, description } = row.original
+		return name.toLowerCase().includes(searchTerm) || (generic_name || '').toLowerCase().includes(searchTerm) || (manufacturer || '').toLowerCase().includes(searchTerm) || (description || '').toLowerCase().includes(searchTerm)
 	}, [])
-	const columns = React.useMemo<ColumnDef<ItemWithRelations>[]>(
+
+	const columns = useMemo<ColumnDef<ItemWithRelations>[]>(
 		() => [
 			{
 				accessorKey: 'name',
-				header: ({ column }) => {
-					return (
-						<Button
-							variant='ghost'
-							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-							Name
-							<ArrowUpDown className='ml-2 h-4 w-4' />
-						</Button>
-					)
-				},
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Name <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
 				cell: ({ row }) => <div className='font-medium'>{row.getValue('name')}</div>,
 			},
 			{
 				accessorKey: 'generic_name',
-				header: 'Generic Name',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Generic Name <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
 			},
 			{
 				accessorKey: 'categories',
-				header: 'Categories',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Categories <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
 				cell: ({ row }) => row.original.categories.map(cat => cat.name).join(', ') || 'N/A',
-				filterFn: (row, columnId, filterValue) => {
+				sortingFn: (rowA, rowB) => {
+					const valA = rowA.original.categories
+						.map(cat => cat.name)
+						.join(', ')
+						.toLowerCase()
+					const valB = rowB.original.categories
+						.map(cat => cat.name)
+						.join(', ')
+						.toLowerCase()
+					return valA.localeCompare(valB)
+				},
+				filterFn: (row, _columnId, filterValue) => {
 					if (!filterValue) return true
 					return row.original.categories.some(cat => cat.id === filterValue)
 				},
-				enableSorting: false,
 			},
 			{
-				accessorKey: 'supplierId', // Used for filtering
-				header: 'Supplier',
+				accessorKey: 'supplierId',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Supplier <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
 				cell: ({ row }) => row.original.supplier?.name || 'N/A',
-				filterFn: (row, columnId, filterValue) => {
+				sortingFn: (rowA, rowB) => {
+					const valA = (rowA.original.supplier?.name || '').toLowerCase()
+					const valB = (rowB.original.supplier?.name || '').toLowerCase()
+					return valA.localeCompare(valB)
+				},
+				filterFn: (row, _columnId, filterValue) => {
 					if (!filterValue) return true
 					return row.original.supplierId === filterValue
 				},
-				enableSorting: false,
 			},
 			{
 				accessorKey: 'quantity_in_stock',
-				header: 'Stock',
-				filterFn: (row, columnId, filterValue) => {
-					if (filterValue === 'out_of_stock') {
-						return row.original.quantity_in_stock <= 0
-					}
-					return true
-				},
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Stock <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
 			},
 			{
 				accessorKey: 'price',
-				header: ({ column }) => {
-					return (
-						<Button
-							variant='outline'
-							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-							Price
-							<ArrowUpDown className='ml-2 h-4 w-4' />
-						</Button>
-					)
-				},
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Price <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
 				cell: ({ row }) => (row.getValue('price') as number).toFixed(2),
 			},
 			{
 				accessorKey: 'expiry_date',
-				header: ({ column }) => {
-					return (
-						<Button
-							variant='outline'
-							onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-							Expiry Date
-							<ArrowUpDown className='ml-2 h-4 w-4' />
-						</Button>
-					)
-				},
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Expiry Date <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
 				cell: ({ row }) => (row.getValue('expiry_date') ? new Date(row.getValue('expiry_date') as string).toLocaleDateString() : 'N/A'),
-				filterFn: (row, columnId, filterValue) => {
+				filterFn: (row, _columnId, filterValue) => {
 					const expiryDate = row.original.expiry_date ? new Date(row.original.expiry_date) : null
 					if (!filterValue || filterValue === 'all') return true
 					if (!expiryDate && (filterValue === 'expired' || filterValue === 'expiring_soon')) return false
-
 					const today = new Date()
 					today.setHours(0, 0, 0, 0)
-
-					if (filterValue === 'expired' && expiryDate) {
-						return expiryDate < today
-					}
+					if (filterValue === 'expired' && expiryDate) return expiryDate < today
 					if (filterValue === 'expiring_soon' && expiryDate) {
 						const thirtyDaysFromNow = new Date(today)
 						thirtyDaysFromNow.setDate(today.getDate() + 30)
@@ -248,7 +236,8 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 					return true
 				},
 			},
-			...(canModify
+			// Actions column for admin/pharmacist
+			...(session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST
 				? [
 						{
 							id: 'actions',
@@ -278,192 +267,191 @@ export function ItemList({ initialItems, initialCategories, initialSuppliers }: 
 									</DropdownMenu>
 								</div>
 							),
-						} as ColumnDef<ItemWithRelations>, // Type assertion
+						} as ColumnDef<ItemWithRelations>,
 				  ]
 				: []),
 		],
-		[canModify, deleteMutation, handleEdit, handleDelete] // Add dependencies
+		[deleteMutation, handleEdit, handleDelete, globalFilterFn, session?.user?.role]
 	)
 
-	const table = useReactTable({
-		data: items || [],
-		columns,
-		getCoreRowModel: getCoreRowModel(),
-		onSortingChange: setSorting,
-		getSortedRowModel: getSortedRowModel(),
-		getFilteredRowModel: getFilteredRowModel(),
-		getFacetedRowModel: getFacetedRowModel(),
-		globalFilterFn: globalFilterFn,
-		state: {
-			sorting,
-			columnFilters,
-			globalFilter,
-		},
-		onColumnFiltersChange: setColumnFilters,
-		onGlobalFilterChange: setGlobalFilter,
-	})
+	// Sync column filters with statusFilter prop
+	useEffect(() => {
+		setColumnFilters(prevFilters => {
+			const updatedFilters = prevFilters.filter(f => f.id !== 'expiry_date' && f.id !== 'quantity_in_stock')
+			if (statusFilter === 'expiring_soon') updatedFilters.push({ id: 'expiry_date', value: 'expiring_soon' })
+			else if (statusFilter === 'out_of_stock') updatedFilters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
+			const prev = JSON.stringify([...prevFilters].sort((a, b) => String(a.id).localeCompare(String(b.id))))
+			const next = JSON.stringify([...updatedFilters].sort((a, b) => String(a.id).localeCompare(String(b.id))))
+			return prev !== next ? updatedFilters : prevFilters
+		})
+	}, [statusFilter])
 
-	const isFiltered = React.useMemo(() => table.getState().columnFilters.length > 0 || !!table.getState().globalFilter, [table.getState().columnFilters, table.getState().globalFilter])
-	// To get the count of visible columns, use getVisibleLeafColumns()
-	// const visibleColumnCount = table.getVisibleLeafColumns().length
-	// console.log('Visible column count:', visibleColumnCount)
+	// Sync filters and pagination with statusFilter prop
+	useEffect(() => {
+		setFilters(f => ({ ...f, status: statusFilter }))
+		setPagination(p => ({ ...p, pageIndex: 0 }))
+	}, [statusFilter])
 
 	const isLoading = isLoadingItems || isLoadingRelated
 	const error = itemsError || relatedError
+	const isAnyFilterActive = columnFilters.length > 0 || !!globalFilter || !!filters.status || !!filters.categoryId || !!filters.supplierId
 
-	if (isLoading && !items && !relatedData) return <div>Loading initial data...</div> // Show loading only if no initial data
+	if (isLoading && !items && !relatedData) return <div>Loading initial data...</div>
 	if (error) return <div className='text-red-600'>Error: {error.message}</div>
 
-	// const currentItems = items || []
-	const currentCategories = relatedData?.categories || []
-	const currentSuppliers = relatedData?.suppliers || []
-
 	return (
-		<div>
-			{/* Filters Toolbar */}
+		<div className='w-full'>
+			{/* Filter/search controls */}
 			<div className='mb-4 flex flex-wrap items-center gap-2 rounded-md border p-4'>
-				<Input
-					placeholder='Search (name, desc, generic, mfg)...'
-					value={globalFilter ?? ''}
-					onChange={event => setGlobalFilter(event.target.value)}
-					className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-xs'
-				/>
-				<Select
-					value={(table.getColumn('categories')?.getFilterValue() as string) ?? 'all'}
-					onValueChange={value => table.getColumn('categories')?.setFilterValue(value === 'all' ? undefined : value)}>
-					<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
-						<SelectValue placeholder='Filter by Category' />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value='all'>All Categories</SelectItem>
-						{currentCategories.map(category => (
-							<SelectItem
-								key={category.id}
-								value={category.id}>
-								{category.name}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				{/* Search input */}
+				{isLoadingRelated ? (
+					<Skeleton className='h-10 w-[180px]' />
+				) : (
+					<Input
+						placeholder='Search (name, desc, generic, mfg)...'
+						value={globalFilter}
+						onChange={event => {
+							const value = event.target.value
+							setGlobalFilter(value)
+							setFilters(f => ({ ...f, search: value || undefined }))
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}
+						className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-2xs'
+					/>
+				)}
 
-				<Select
-					value={(table.getColumn('supplierId')?.getFilterValue() as string) ?? 'all'}
-					onValueChange={value => table.getColumn('supplierId')?.setFilterValue(value === 'all' ? undefined : value)}>
-					<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
-						<SelectValue placeholder='Filter by Supplier' />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value='all'>All Suppliers</SelectItem>
-						{currentSuppliers.map(supplier => (
-							<SelectItem
-								key={supplier.id}
-								value={supplier.id}>
-								{supplier.name}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				{/* Category filter */}
+				{isLoadingRelated ? (
+					<Skeleton className='h-10 w-[180px]' />
+				) : (
+					<Select
+						value={filters.categoryId ?? 'all'}
+						onValueChange={value => {
+							setFilters(f => ({ ...f, categoryId: value === 'all' ? undefined : value }))
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}>
+						<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
+							<SelectValue placeholder='Filter by Category' />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value='all'>All Categories</SelectItem>
+							{currentCategories.map(category => (
+								<SelectItem
+									key={category.id}
+									value={category.id}>
+									{category.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				)}
 
-				<Select
-					value={(table.getColumn('quantity_in_stock')?.getFilterValue() as string) ?? 'all'}
-					onValueChange={value => table.getColumn('quantity_in_stock')?.setFilterValue(value === 'all' ? undefined : value)}>
-					<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
-						<SelectValue placeholder='Stock Status' />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value='all'>All Stock Status</SelectItem>
-						<SelectItem value='out_of_stock'>Out of Stock</SelectItem>
-						{/* Add "Low Stock" if reorder_level is consistently used */}
-					</SelectContent>
-				</Select>
+				{/* Supplier filter */}
+				{isLoadingRelated ? (
+					<Skeleton className='h-10 w-[180px]' />
+				) : (
+					<Select
+						value={filters.supplierId ?? 'all'}
+						onValueChange={value => {
+							setFilters(f => ({ ...f, supplierId: value === 'all' ? undefined : value }))
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}>
+						<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
+							<SelectValue placeholder='Filter by Supplier' />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value='all'>All Suppliers</SelectItem>
+							{currentSuppliers.map(supplier => (
+								<SelectItem
+									key={supplier.id}
+									value={supplier.id}>
+									{supplier.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				)}
 
-				<Select
-					value={(table.getColumn('expiry_date')?.getFilterValue() as string) ?? 'all'}
-					onValueChange={value => table.getColumn('expiry_date')?.setFilterValue(value === 'all' ? undefined : value)}>
-					<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
-						<SelectValue placeholder='Expiry Status' />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value='all'>All Expiry Status</SelectItem>
-						<SelectItem value='expiring_soon'>Expiring Soon (30d)</SelectItem>
-						<SelectItem value='expired'>Expired</SelectItem>
-					</SelectContent>
-				</Select>
+				{/* Status filter */}
+				{isLoadingRelated ? (
+					<Skeleton className='h-10 w-[180px]' />
+				) : (
+					<Select
+						value={filters.status ?? 'all'}
+						onValueChange={value => {
+							setFilters(f => ({ ...f, status: value === 'all' ? undefined : value }))
+							setPagination(p => ({ ...p, pageIndex: 0 }))
+						}}>
+						<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
+							<SelectValue placeholder='Stock/Expiry Status' />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value='all'>All Status</SelectItem>
+							<SelectItem value='out_of_stock'>Out of Stock</SelectItem>
+							<SelectItem value='expiring_soon'>Expiring Soon (30d)</SelectItem>
+							<SelectItem value='expired'>Expired</SelectItem>
+						</SelectContent>
+					</Select>
+				)}
 
-				{isFiltered && (
+				{/* Reset button */}
+				{isAnyFilterActive && (
 					<Button
 						variant='ghost'
 						onClick={() => {
-							table.resetColumnFilters()
+							setColumnFilters([])
 							setGlobalFilter('')
+							setFilters({})
+							setPagination(p => ({ ...p, pageIndex: 0 }))
 						}}
 						className='h-10'>
 						Reset
 					</Button>
 				)}
 			</div>
-			{canModify && (
-				<div className='mb-4 flex justify-end'>
-					{/* Replace Dialog with Sheet */}
-					<Sheet
-						open={isSheetOpen}
-						onOpenChange={setIsSheetOpen}>
-						<SheetTrigger asChild>
-							<Button onClick={handleAddNew}>
-								<PlusCircle className='mr-2 h-4 w-4' /> Add New Item
-							</Button>
-						</SheetTrigger>
-						<SheetContent className='w-full overflow-y-auto sm:max-w-xl md:max-w-2xl lg:max-w-3xl'>
-							{' '}
-							{/* Adjust width as needed */}
-							<SheetHeader className='mb-4'>
-								<DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
-							</SheetHeader>
-							<ItemForm
-								itemData={editingItem}
-								categories={currentCategories} // Pass current categories
-								suppliers={currentSuppliers} // Pass current suppliers
-								onSuccess={handleFormSuccess}
-							/>
-						</SheetContent>
-					</Sheet>
-				</div>
+
+			{/* Data Table */}
+			<CustomDataTable
+				columns={columns}
+				data={items}
+				isLoading={isLoading}
+				noResultsMessage='No items found.'
+				sorting={sorting}
+				onSortingChange={setSorting}
+				columnFilters={columnFilters}
+				onColumnFiltersChange={setColumnFilters}
+				globalFilter={globalFilter}
+				onGlobalFilterChange={setGlobalFilter}
+				pagination={pagination}
+				onPaginationChange={setPagination}
+				pageCount={Math.ceil(total / pagination.pageSize)}
+			/>
+
+			{/* Floating Action Button (FAB) for Add New Item */}
+			{(session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST) && (
+				<AddFAB
+					onClick={handleAddNew}
+					ariaLabel='Add New Item'
+				/>
 			)}
-			<div className='rounded-md border'>
-				<Table>
-					<TableHeader>
-						{table.getHeaderGroups().map(headerGroup => (
-							<TableRow key={headerGroup.id}>
-								{headerGroup.headers.map(header => (
-									<TableHead key={header.id}>{header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}</TableHead>
-								))}
-							</TableRow>
-						))}
-					</TableHeader>
-					<TableBody>
-						{table.getRowModel().rows?.length ? (
-							table.getRowModel().rows.map(row => (
-								<TableRow
-									key={row.id}
-									data-state={row.getIsSelected() && 'selected'}>
-									{row.getVisibleCells().map(cell => (
-										<TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-									))}
-								</TableRow>
-							))
-						) : (
-							<TableRow>
-								<TableCell
-									colSpan={columns.length}
-									className='h-24 text-center'>
-									No results.
-								</TableCell>
-							</TableRow>
-						)}
-					</TableBody>
-				</Table>
-			</div>
-			{/* TODO: Add pagination controls here if needed */}
+
+			{/* Sheet for Add/Edit */}
+			<Sheet
+				open={isSheetOpen}
+				onOpenChange={setIsSheetOpen}>
+				<SheetContent className='w-full overflow-y-auto sm:max-w-xl md:max-w-2xl lg:max-w-3xl'>
+					<SheetHeader className='mb-4'>
+						<DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
+					</SheetHeader>
+					<ItemForm
+						itemData={editingItem}
+						categories={currentCategories}
+						suppliers={currentSuppliers}
+						onSuccess={handleFormSuccess}
+					/>
+				</SheetContent>
+			</Sheet>
 		</div>
 	)
 }
+

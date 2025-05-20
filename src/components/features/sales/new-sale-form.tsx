@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { useForm, useFieldArray, Controller } from 'react-hook-form'
+import { useState, useMemo, useCallback } from 'react'
+import { useForm, useFieldArray, Controller, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query' // Added useQuery
-import { ItemWithRelations } from '@/types/inventory' // Use your existing item type
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { ItemWithRelations } from '@/types/inventory'
 import { Customer as PrismaCustomer, PaymentMethod } from '@/generated/prisma'
 import { saleCreateSchema, SaleCreateFormValues, SaleItemFormValues } from '@/lib/validations/sale'
+
+import { fetchAllCustomerNames_cli, fetchCustomerById_cli, fetchCustomers_cli } from '@/services/customerService'
+import { fetchAllItemNames_cli, fetchItemById_cli, fetchItems_cli } from '@/services/inventoryService'
+import { createSaleAPI } from '@/services/saleService'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,52 +19,69 @@ import { Textarea } from '@/components/ui/textarea'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Trash2, Search } from 'lucide-react' // Sheet removed from here
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet' // Sheet added here
+import { Trash2, Search } from 'lucide-react'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { CustomerForm } from '../customers/customer-form'
-// import { Combobox } from '@/components/ui/combobox' // Combobox is not a standard Shadcn UI component
-
-interface NewSaleFormProps {
-	initialItems: ItemWithRelations[] // For item selection
-	initialCustomers: PrismaCustomer[] // Initial customers from server
-}
+import { useRouter } from 'next/navigation'
 
 const saleQueryKeys = {
 	allSales: ['sales'] as const,
-	itemsForSale: ['itemsForSale'] as const, // If fetching items client-side
-	// Key for fetching customers client-side if needed, or for invalidation
 	customersList: ['customers', 'list'] as const,
 }
 
-async function createSaleAPI(payload: SaleCreateFormValues): Promise<{ id: string; message: string }> {
-	// Define return type based on API response
-	const response = await fetch('/api/sales', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(payload),
-	})
-	const result = await response.json()
-	if (!response.ok) {
-		throw new Error(result.message || result.error || 'Failed to create sale.')
-	}
-	return result
+// Utility: Calculate total for a sale item (after per-item discount and tax)
+function calcItemTotal(itemPrice: number, quantity: number, discountPercent: number, taxPercent: number) {
+	const gross = itemPrice * quantity
+	const itemDiscount = gross * discountPercent
+	const netAfterItemDiscount = gross - itemDiscount
+	const tax = netAfterItemDiscount * taxPercent
+	return netAfterItemDiscount + tax
 }
 
-// API function to fetch customers (if you want to refresh client-side)
-async function fetchCustomersAPI(): Promise<PrismaCustomer[]> {
-	const response = await fetch('/api/customers')
-	if (!response.ok) {
-		throw new Error('Failed to fetch customers')
-	}
-	return response.json()
+// Utility: Calculate per-item discount amount (per-item only)
+function calcItemDiscount(itemPrice: number, quantity: number, discountPercent: number) {
+	const gross = itemPrice * quantity
+	return gross * discountPercent
 }
 
-export function NewSaleForm({ initialItems, initialCustomers }: NewSaleFormProps) {
+// Utility: Calculate per-item tax amount (after per-item discount)
+function calcItemTax(itemPrice: number, quantity: number, discountPercent: number, taxPercent: number) {
+	const gross = itemPrice * quantity
+	const itemDiscount = gross * discountPercent
+	const netAfterItemDiscount = gross - itemDiscount
+	return netAfterItemDiscount * taxPercent
+}
+
+// Utility: Render customer display name
+function getCustomerDisplayName(customer: { name: string; phone?: string | null; email?: string | null }) {
+	return `${customer.name} (${customer.phone || customer.email || 'N/A'})`
+}
+
+// Utility: Render item display name
+function getItemDisplayName(item: { name: string; generic_name?: string | null }) {
+	return item.generic_name ? `${item.name} (${item.generic_name})` : item.name
+}
+
+// Utility: Filter customers by search term
+function filterCustomers(customers: { name: string; phone?: string | null; email?: string | null }[], term: string) {
+	const lowerTerm = term.toLowerCase()
+	return customers.filter(c => c.name.toLowerCase().includes(lowerTerm) || (c.phone && c.phone.includes(term)) || (c.email && c.email.toLowerCase().includes(lowerTerm)))
+}
+
+// Utility: Filter items by search term
+function filterItems(items: { name: string; generic_name?: string | null }[], term: string) {
+	const lowerTerm = term.toLowerCase()
+	return items.filter(item => item.name.toLowerCase().includes(lowerTerm) || (item.generic_name && item.generic_name.toLowerCase().includes(lowerTerm)))
+}
+
+export function NewSaleForm() {
+	const router = useRouter()
 	const queryClient = useQueryClient()
 	const [searchTerm, setSearchTerm] = useState('')
 	const [customerSearchTerm, setCustomerSearchTerm] = useState('')
 	const [selectedCustomerName, setSelectedCustomerName] = useState<string | null>(null)
 	const [isCustomerSheetOpen, setIsCustomerSheetOpen] = useState(false)
+	const [redirectToInvoice, setRedirectToInvoice] = useState(false)
 
 	const form = useForm<SaleCreateFormValues>({
 		resolver: zodResolver(saleCreateSchema),
@@ -68,198 +89,296 @@ export function NewSaleForm({ initialItems, initialCustomers }: NewSaleFormProps
 			customerId: null,
 			saleItems: [],
 			paymentMethod: PaymentMethod.CASH,
-			totalDiscount: 0,
-			totalTax: 0,
+			totalDiscount: 0, // This will now be extra discount percentage (e.g. 0.05 for 5%)
 			notes: '',
 		},
 	})
 
-	// Use TanStack Query to manage customers list client-side for dynamic updates
-	const { data: customersData, refetch: refetchCustomers } = useQuery<PrismaCustomer[], Error>({
-		queryKey: saleQueryKeys.customersList,
-		queryFn: fetchCustomersAPI,
-		initialData: initialCustomers, // Use initial data from server
+	const { data: allCustomerNames = [] } = useQuery({
+		queryKey: ['all-customer-names'],
+		queryFn: fetchAllCustomerNames_cli,
+		staleTime: 1000 * 60 * 10,
 	})
 
-	const currentCustomers = customersData || initialCustomers
+	const { data: allItemNames = [] } = useQuery({
+		queryKey: ['all-item-names'],
+		queryFn: fetchAllItemNames_cli,
+		staleTime: 1000 * 60 * 10,
+	})
+
+	const { data: liveCustomerResults = [], isLoading: customerSearchLoading } = useQuery({
+		queryKey: ['sale-customer-search', customerSearchTerm],
+		queryFn: () => (customerSearchTerm ? fetchCustomers_cli(1, 10, customerSearchTerm).then(res => res.customers) : Promise.resolve([])),
+		enabled: !!customerSearchTerm,
+	})
+
+	const { data: liveItems = [], isLoading: itemsLoading } = useQuery({
+		queryKey: ['sale-items', searchTerm],
+		queryFn: () => (searchTerm ? fetchItems_cli(1, 10, { search: searchTerm }).then(res => res.items) : Promise.resolve([])),
+		enabled: !!searchTerm,
+	})
 
 	const { fields, append, remove, update } = useFieldArray({
 		control: form.control,
 		name: 'saleItems',
-		keyName: 'fieldId', // Important for unique keys
+		keyName: 'fieldId',
 	})
 
-	const saleItemsWatch = form.watch('saleItems') // Watch saleItems for dynamic calculations
+	// Watch extra discount as whole number (1-100), but use decimal in calculations
+	const extraDiscountPercentRaw = useWatch({ control: form.control, name: 'totalDiscount' }) || 0
+	const extraDiscountPercent = extraDiscountPercentRaw / 100
 
-	const subTotal = useMemo(() => {
-		return saleItemsWatch.reduce((acc, currentItem) => {
-			const itemPrice = currentItem.priceAtSale || 0
-			const quantity = currentItem.quantitySold || 0
-			const discount = currentItem.discountOnItem || 0
-			const tax = currentItem.taxOnItem || 0
-			return acc + (itemPrice * quantity - discount + tax)
-		}, 0)
-	}, [saleItemsWatch])
+	const saleItemsWatch = useWatch({ control: form.control, name: 'saleItems' })
 
-	const totalDiscountWatch = form.watch('totalDiscount')
-	const totalTaxWatch = form.watch('totalTax')
+	// Subtotal: sum of (item price * quantity) for all items
+	const totalPriceBeforeDiscounts = useMemo(
+		() =>
+			(saleItemsWatch || []).reduce((acc, currentItem) => {
+				const itemPrice = currentItem.priceAtSale || 0
+				const quantity = currentItem.quantitySold || 0
+				return acc + itemPrice * quantity
+			}, 0),
+		[saleItemsWatch]
+	)
 
-	const grandTotal = useMemo(() => {
-		return subTotal - (totalDiscountWatch || 0) + (totalTaxWatch || 0)
-	}, [subTotal, totalDiscountWatch, totalTaxWatch])
+	// Total product discount: sum of all per-item discounts
+	const totalProductDiscount = useMemo(
+		() =>
+			(saleItemsWatch || []).reduce((acc, currentItem) => {
+				const itemPrice = currentItem.priceAtSale || 0
+				const quantity = currentItem.quantitySold || 0
+				const discountPercent = currentItem.discountOnItem || 0
+				return acc + calcItemDiscount(itemPrice, quantity, discountPercent)
+			}, 0),
+		[saleItemsWatch]
+	)
+
+	// Subtotal after per-item discounts (before extra discount)
+	const subTotalAfterProductDiscount = useMemo(() => totalPriceBeforeDiscounts - totalProductDiscount, [totalPriceBeforeDiscounts, totalProductDiscount])
+
+	// Extra discount amount (applied only to subtotal after per-item discounts)
+	const extraDiscountAmount = useMemo(() => subTotalAfterProductDiscount * extraDiscountPercent, [subTotalAfterProductDiscount, extraDiscountPercent])
+
+	// Subtotal after all discounts (per-item + extra)
+	const subTotal = useMemo(() => subTotalAfterProductDiscount - extraDiscountAmount, [subTotalAfterProductDiscount, extraDiscountAmount])
+
+	// Total tax: sum of all per-item tax (after per-item discount, before extra discount)
+	const totalTax = useMemo(
+		() =>
+			(saleItemsWatch || []).reduce((acc, currentItem) => {
+				const itemPrice = currentItem.priceAtSale || 0
+				const quantity = currentItem.quantitySold || 0
+				const discountPercent = currentItem.discountOnItem || 0
+				const taxPercent = currentItem.taxOnItem || 0
+				return acc + calcItemTax(itemPrice, quantity, discountPercent, taxPercent)
+			}, 0),
+		[saleItemsWatch]
+	)
+
+	// Grand total: subtotal after all discounts + total tax
+	const grandTotal = useMemo(() => subTotal + totalTax, [subTotal, totalTax])
 
 	const createSaleMutation = useMutation({
 		mutationFn: createSaleAPI,
-		onSuccess: () => {
+		onSuccess: createdSale => {
 			toast.success('Sale created successfully!')
 			queryClient.invalidateQueries({ queryKey: saleQueryKeys.allSales })
-			queryClient.invalidateQueries({ queryKey: ['items', 'list'] }) // Invalidate inventory items list
+			queryClient.invalidateQueries({ queryKey: ['items', 'list'] })
 			form.reset()
-			// Optionally redirect to the created sale/invoice page: router.push(`/sales/${data.id}`)
+			setSelectedCustomerName(null)
+			setCustomerSearchTerm('')
+			setIsCustomerSheetOpen(false)
+			if (redirectToInvoice && createdSale?.id) {
+				router.push(`/sales/${createdSale.id}`)
+			}
+			setRedirectToInvoice(false)
 		},
 		onError: (error: Error) => {
 			toast.error(error.message || 'Failed to create sale.')
+			setRedirectToInvoice(false)
 		},
 	})
 
-	const onSubmit = (values: SaleCreateFormValues) => {
-		if (values.saleItems.length === 0) {
-			toast.error('Please add at least one item to the sale.')
-			return
-		}
-		createSaleMutation.mutate(values)
-	}
-
-	const addItemToSale = (item: ItemWithRelations) => {
-		const existingItemIndex = fields.findIndex(field => field.itemId === item.id)
-		if (existingItemIndex > -1) {
-			// If item exists, update its quantity
-			const existingItem = fields[existingItemIndex]
-			if (existingItem.quantitySold < item.quantity_in_stock) {
-				update(existingItemIndex, { ...existingItem, quantitySold: existingItem.quantitySold + 1 })
-			} else {
-				toast.warning(`Max stock (${item.quantity_in_stock}) reached for ${item.name}.`)
+	const onSubmit = useCallback(
+		(values: SaleCreateFormValues) => {
+			if (values.saleItems.length === 0) {
+				toast.error('Please add at least one item to the sale.')
+				return
 			}
-		} else {
-			// Add new item
-			if (item.quantity_in_stock > 0) {
-				append({
-					itemId: item.id,
-					quantitySold: 1,
-					priceAtSale: item.price, // Capture current price
-					discountOnItem: 0,
-					taxOnItem: 0,
-				} as SaleItemFormValues) // Cast to ensure type compatibility
-			} else {
-				toast.error(`${item.name} is out of stock.`)
-			}
-		}
-		setSearchTerm('') // Clear search after adding
-	}
+			createSaleMutation.mutate(values)
+		},
+		[createSaleMutation]
+	)
 
-	const handleCustomerSelect = (customer: PrismaCustomer) => {
-		form.setValue('customerId', customer.id)
-		setSelectedCustomerName(`${customer.name} (${customer.phone || customer.email || 'N/A'})`)
-		setCustomerSearchTerm('') // Clear search
-	}
-
-	const handleNewCustomerSuccess = (newCustomer: PrismaCustomer) => {
-		setIsCustomerSheetOpen(false)
-		// Invalidate and refetch customers list to include the new one
-		queryClient.invalidateQueries({ queryKey: saleQueryKeys.customersList }).then(() => {
-			refetchCustomers().then(queryResult => {
-				const updatedCustomers = queryResult.data || currentCustomers
-				const newlyAddedCustomer = updatedCustomers.find(c => c.id === newCustomer.id)
-				if (newlyAddedCustomer) {
-					handleCustomerSelect(newlyAddedCustomer) // Auto-select the new customer
+	const addItemToSale = useCallback(
+		(item: ItemWithRelations) => {
+			const existingItemIndex = fields.findIndex(field => field.itemId === item.id)
+			if (existingItemIndex > -1) {
+				const existingItem = fields[existingItemIndex]
+				if (existingItem.quantitySold < item.quantity_in_stock) {
+					update(existingItemIndex, {
+						...existingItem,
+						quantitySold: existingItem.quantitySold + 1,
+					})
+				} else {
+					toast.warning(`Max stock (${item.quantity_in_stock}) reached for ${item.name}.`)
 				}
-			})
-		})
-		toast.success(`Customer "${newCustomer.name}" added and selected.`)
-	}
-
-	const filteredItems = useMemo(() => {
-		if (!searchTerm) return [] // Don't show all items initially or make it a prop
-		return initialItems.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()) || item.generic_name?.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, 10) // Limit results for performance
-	}, [searchTerm, initialItems])
-
-	const filteredCustomers = useMemo(() => {
-		if (!customerSearchTerm) return [] // Only filter when there's a search term
-		return currentCustomers.filter(customer => customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) || customer.phone?.includes(customerSearchTerm) || customer.email?.toLowerCase().includes(customerSearchTerm.toLowerCase())).slice(0, 5) // Limit results
-	}, [customerSearchTerm, currentCustomers])
-
-	// Effect to update selectedCustomerName when customerId changes (e.g., on form reset)
-	useEffect(() => {
-		const currentCustomerId = form.getValues('customerId')
-		if (currentCustomerId) {
-			const cust = initialCustomers.find(c => c.id === currentCustomerId)
-			if (cust) {
-				setSelectedCustomerName(`${cust.name} (${cust.phone || cust.email || 'ID: ' + cust.id.substring(0, 6)})`)
+			} else {
+				if (item.quantity_in_stock > 0) {
+					append({
+						itemId: item.id,
+						quantitySold: 1,
+						priceAtSale: item.price,
+						discountOnItem: item.discount,
+						taxOnItem: item.tax_rate,
+						itemName: item.name,
+						itemGenericName: item.generic_name,
+						itemStock: item.quantity_in_stock,
+					} as SaleItemFormValues & { itemName: string; itemGenericName?: string; itemStock: number })
+				} else {
+					toast.error(`${item.name} is out of stock.`)
+				}
 			}
-		} else {
-			setSelectedCustomerName(null)
-		}
-	}, [form.watch('customerId'), currentCustomers, form]) // Use currentCustomers
+			setSearchTerm('')
+		},
+		[fields, append, update]
+	)
+
+	const handleSelectCustomer = useCallback(
+		async (customerId: string) => {
+			const customer = await fetchCustomerById_cli(customerId)
+			if (customer) {
+				form.setValue('customerId', customer.id)
+				setSelectedCustomerName(getCustomerDisplayName(customer))
+				setCustomerSearchTerm('')
+			}
+		},
+		[form]
+	)
+
+	const handleSelectItem = useCallback(
+		async (itemId: string) => {
+			const item = await fetchItemById_cli(itemId)
+			if (item) addItemToSale(item)
+			setSearchTerm('')
+		},
+		[addItemToSale]
+	)
+
+	const handleNewCustomerSuccess = useCallback(
+		(newCustomer: PrismaCustomer) => {
+			queryClient.invalidateQueries({ queryKey: ['all-customer-names'] })
+			setIsCustomerSheetOpen(false)
+			setSelectedCustomerName(getCustomerDisplayName(newCustomer))
+			form.setValue('customerId', newCustomer.id)
+			setCustomerSearchTerm('')
+		},
+		[form, queryClient]
+	)
+
+	const filteredCustomerNames = useMemo(() => (customerSearchTerm ? filterCustomers(allCustomerNames, customerSearchTerm) : []), [customerSearchTerm, allCustomerNames])
+
+	const filteredItemNames = useMemo(() => (searchTerm ? filterItems(allItemNames, searchTerm) : []), [searchTerm, allItemNames])
+
+	const handleCompleteOnly = useCallback(() => {
+		setRedirectToInvoice(false)
+		form.handleSubmit(onSubmit)()
+	}, [form, onSubmit])
+
+	const handleCompleteAndView = useCallback(() => {
+		setRedirectToInvoice(true)
+		form.handleSubmit(onSubmit)()
+	}, [form, onSubmit])
 
 	return (
 		<Form {...form}>
 			<form
-				onSubmit={form.handleSubmit(onSubmit)}
-				className='space-y-8'>
+				onSubmit={e => e.preventDefault()}
+				className='space-y-8'
+				autoComplete='off'>
 				{/* Customer Search and Selection */}
 				<div className='space-y-2'>
 					<FormLabel>Customer (Optional)</FormLabel>
 					<Input
 						placeholder='Search customer by name, phone, or email...'
-						value={selectedCustomerName || customerSearchTerm} // Show selected name or search term
+						value={customerSearchTerm}
 						onChange={e => {
 							setCustomerSearchTerm(e.target.value)
-							setSelectedCustomerName(null) // Clear selected name when typing
-							form.setValue('customerId', null) // Clear customerId when typing new search
+							setSelectedCustomerName(null)
+							form.setValue('customerId', null)
 						}}
 					/>
-					{customerSearchTerm && filteredCustomers.length > 0 && (
-						<div className='border rounded-md max-h-40 overflow-y-auto'>
-							{filteredCustomers.map(customer => (
-								<div
-									key={customer.id}
-									className='p-2 hover:bg-accent cursor-pointer'
-									onClick={() => handleCustomerSelect(customer)}>
-									{customer.name} ({customer.phone || customer.email || 'N/A'})
-								</div>
-							))}
+					{customerSearchTerm && (
+						<div className='border rounded-md max-h-40 overflow-y-auto bg-background z-10'>
+							{filteredCustomerNames.length > 0 ? (
+								filteredCustomerNames.map(customer => (
+									<div
+										key={customer.id}
+										className='p-2 hover:bg-accent cursor-pointer'
+										onClick={() => handleSelectCustomer(customer.id)}>
+										{getCustomerDisplayName(customer)}
+									</div>
+								))
+							) : (
+								<>
+									{customerSearchLoading && <div className='p-2 text-muted-foreground'>Searching...</div>}
+									{liveCustomerResults.length > 0
+										? liveCustomerResults.map(customer => (
+												<div
+													key={customer.id}
+													className='p-2 hover:bg-accent cursor-pointer'
+													onClick={() => handleSelectCustomer(customer.id)}>
+													{getCustomerDisplayName(customer)}
+												</div>
+										  ))
+										: !customerSearchLoading && (
+												<div className='text-sm text-muted-foreground'>
+													No customers found.
+													<Sheet
+														open={isCustomerSheetOpen}
+														onOpenChange={setIsCustomerSheetOpen}>
+														<SheetTrigger asChild>
+															<Button
+																type='button'
+																variant='link'
+																size='sm'
+																className='p-1'>
+																Add New?
+															</Button>
+														</SheetTrigger>
+														<SheetContent className='w-full overflow-y-auto sm:max-w-md'>
+															<SheetHeader>
+																<SheetTitle>Add New Customer</SheetTitle>
+															</SheetHeader>
+															<CustomerForm onSuccess={handleNewCustomerSuccess} />
+														</SheetContent>
+													</Sheet>
+												</div>
+										  )}
+								</>
+							)}
 						</div>
 					)}
-					{customerSearchTerm && filteredCustomers.length === 0 && !selectedCustomerName && (
-						<div className='text-sm text-muted-foreground'>
-							No customers found.
-							<Sheet
-								open={isCustomerSheetOpen}
-								onOpenChange={setIsCustomerSheetOpen}>
-								<SheetTrigger asChild>
-									<Button
-										type='button'
-										variant='link'
-										size='sm'
-										className='p-1'>
-										Add New?
-									</Button>
-								</SheetTrigger>
-								<SheetContent className='w-full overflow-y-auto sm:max-w-md'>
-									<SheetHeader>
-										<SheetTitle>Add New Customer</SheetTitle>
-									</SheetHeader>
-									<CustomerForm onSuccess={handleNewCustomerSuccess} />
-								</SheetContent>
-							</Sheet>
+					{selectedCustomerName && (
+						<div className='mt-1 text-sm text-green-700'>
+							Selected: {selectedCustomerName}{' '}
+							<Button
+								type='button'
+								variant='link'
+								size='sm'
+								onClick={() => {
+									setSelectedCustomerName(null)
+									form.setValue('customerId', null)
+								}}>
+								Clear
+							</Button>
 						</div>
 					)}
 					<FormField
 						control={form.control}
 						name='customerId'
-						render={({ field }) => <FormMessage />}
-					/>{' '}
-					{/* To show validation errors for customerId if any */}
+						render={() => <FormMessage />}
+					/>
 				</div>
 
 				{/* Item Search and Add */}
@@ -274,19 +393,34 @@ export function NewSaleForm({ initialItems, initialCustomers }: NewSaleFormProps
 							className='flex-grow'
 						/>
 					</div>
-					{searchTerm && filteredItems.length > 0 && (
+					{searchTerm && (
 						<div className='border rounded-md max-h-60 overflow-y-auto'>
-							{filteredItems.map(item => (
-								<div
-									key={item.id}
-									className='p-2 hover:bg-accent cursor-pointer'
-									onClick={() => addItemToSale(item)}>
-									{item.name} (Stock: {item.quantity_in_stock}, Price: {item.price.toFixed(2)})
-								</div>
-							))}
+							{filteredItemNames.length > 0 ? (
+								filteredItemNames.map(item => (
+									<div
+										key={item.id}
+										className='p-2 hover:bg-accent cursor-pointer'
+										onClick={() => handleSelectItem(item.id)}>
+										{getItemDisplayName(item)}
+									</div>
+								))
+							) : (
+								<>
+									{itemsLoading && <div className='p-2 text-muted-foreground'>Searching...</div>}
+									{liveItems.length > 0
+										? liveItems.map(item => (
+												<div
+													key={item.id}
+													className='p-2 hover:bg-accent cursor-pointer'
+													onClick={() => handleSelectItem(item.id)}>
+													{item.name} (Stock: {item.quantity_in_stock}, Price: {item.price.toFixed(2)})
+												</div>
+										  ))
+										: !itemsLoading && <p className='text-sm text-muted-foreground'>No items found.</p>}
+								</>
+							)}
 						</div>
 					)}
-					{searchTerm && filteredItems.length === 0 && <p className='text-sm text-muted-foreground'>No items found.</p>}
 				</div>
 
 				{/* Sale Items Table */}
@@ -303,10 +437,16 @@ export function NewSaleForm({ initialItems, initialCustomers }: NewSaleFormProps
 						</TableHeader>
 						<TableBody>
 							{fields.map((field, index) => {
-								const itemDetails = initialItems.find(i => i.id === field.itemId)
+								const name = field.itemName || 'Unknown Item'
+								const price = field.priceAtSale
+								const stock = field.itemStock ?? 99
+								const quantity = field.quantitySold || 0
+								const discountPercent = field.discountOnItem || 0
+								const taxPercent = field.taxOnItem || 0
+								const total = calcItemTotal(price, quantity, discountPercent, taxPercent)
 								return (
 									<TableRow key={field.fieldId}>
-										<TableCell>{itemDetails?.name || 'Unknown Item'}</TableCell>
+										<TableCell>{name}</TableCell>
 										<TableCell>
 											<Controller
 												control={form.control}
@@ -315,16 +455,24 @@ export function NewSaleForm({ initialItems, initialCustomers }: NewSaleFormProps
 													<Input
 														type='number'
 														min='1'
-														max={itemDetails?.quantity_in_stock || 1}
+														max={stock}
 														{...qtyField}
-														onChange={e => qtyField.onChange(parseInt(e.target.value, 10))}
+														onChange={e => {
+															const val = parseInt(e.target.value, 10)
+															if (val > stock) {
+																toast.warning(`Max stock (${stock}) reached for ${name}.`)
+																qtyField.onChange(stock)
+															} else {
+																qtyField.onChange(val)
+															}
+														}}
 														className='w-full'
 													/>
 												)}
 											/>
 										</TableCell>
-										<TableCell>{field.priceAtSale.toFixed(2)}</TableCell>
-										<TableCell>{(field.priceAtSale * field.quantitySold).toFixed(2)}</TableCell>
+										<TableCell>₹{price.toFixed(2)}</TableCell>
+										<TableCell>₹{total.toFixed(2)}</TableCell>
 										<TableCell>
 											<Button
 												type='button'
@@ -392,60 +540,79 @@ export function NewSaleForm({ initialItems, initialCustomers }: NewSaleFormProps
 					</div>
 					<div className='space-y-2 text-right'>
 						<div className='flex justify-between items-center'>
-							<span>Subtotal:</span> <span>{subTotal.toFixed(2)}</span>
+							<span>Total Price (Before Discounts):</span>
+							<span>₹{totalPriceBeforeDiscounts.toFixed(2)}</span>
 						</div>
-						<FormField
-							control={form.control}
-							name='totalDiscount'
-							render={({ field }) => (
-								<FormItem className='flex justify-between items-center'>
-									<FormLabel className='mr-2'>Overall Discount:</FormLabel>
-									<FormControl>
-										<Input
-											type='number'
-											step='0.01'
-											className='w-24 text-right'
-											placeholder='0.00'
-											{...field}
-											onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
-											value={field.value ?? ''}
-										/>
-									</FormControl>
-								</FormItem>
-							)}
-						/>
-						<FormField
-							control={form.control}
-							name='totalTax'
-							render={({ field }) => (
-								<FormItem className='flex justify-between items-center'>
-									<FormLabel className='mr-2'>Overall Tax:</FormLabel>
-									<FormControl>
-										<Input
-											type='number'
-											step='0.01'
-											className='w-24 text-right'
-											placeholder='0.00'
-											{...field}
-											onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
-											value={field.value ?? ''}
-										/>
-									</FormControl>
-								</FormItem>
-							)}
-						/>
+						<div className='flex justify-between items-center'>
+							<span>Total Product Discount:</span>
+							<span>-₹{totalProductDiscount.toFixed(2)}</span>
+						</div>
+						<div className='flex justify-between items-center'>
+							<span>Extra Discount (%):</span>
+							<span>
+								<FormField
+									control={form.control}
+									name='totalDiscount'
+									render={({ field }) => (
+										<FormItem className='inline-flex items-center gap-1'>
+											<FormControl>
+												<Input
+													type='number'
+													step='1'
+													min='0'
+													max='100'
+													className='w-16 text-right'
+													placeholder='0'
+													{...field}
+													onChange={e => {
+														let val = parseInt(e.target.value, 10)
+														if (isNaN(val) || val < 0) val = 0
+														if (val > 100) val = 100
+														field.onChange(val)
+													}}
+													value={field.value ?? ''}
+												/>
+											</FormControl>
+											<span className='ml-1'>%</span>
+										</FormItem>
+									)}
+								/>
+							</span>
+						</div>
+						<div className='flex justify-between items-center'>
+							<span>Extra Discount Amount:</span>
+							<span>-₹{extraDiscountAmount.toFixed(2)}</span>
+						</div>
+						<div className='flex justify-between items-center'>
+							<span>Subtotal (After All Discounts):</span>
+							<span>₹{subTotal.toFixed(2)}</span>
+						</div>
+						<div className='flex justify-between items-center'>
+							<span>Total Tax:</span>
+							<span>+₹{totalTax.toFixed(2)}</span>
+						</div>
 						<div className='text-xl font-bold flex justify-between items-center'>
-							<span>Grand Total:</span> <span>{grandTotal.toFixed(2)}</span>
+							<span>Grand Total:</span>
+							<span>₹{grandTotal.toFixed(2)}</span>
 						</div>
 					</div>
 				</div>
 
-				<div className='flex justify-end pt-6'>
+				<div className='flex justify-end pt-6 gap-2'>
 					<Button
-						type='submit'
+						type='button'
 						size='lg'
-						disabled={createSaleMutation.isPending || fields.length === 0}>
-						{createSaleMutation.isPending ? 'Processing Sale...' : 'Complete Sale & Generate Bill'}
+						disabled={createSaleMutation.isPending || fields.length === 0}
+						onClick={handleCompleteOnly}>
+						{createSaleMutation.isPending && !redirectToInvoice ? 'Processing Sale...' : 'Complete Sale'}
+					</Button>
+					<Button
+						type='button'
+						size='lg'
+						variant='secondary'
+						disabled={createSaleMutation.isPending || fields.length === 0}
+						onClick={handleCompleteAndView}>
+						{createSaleMutation.isPending && redirectToInvoice ? 'Processing & Redirecting...' : 'Complete Sale & View Invoice'}
 					</Button>
 				</div>
 			</form>

@@ -7,20 +7,7 @@ import { Role } from '@/generated/prisma'
 import { del } from '@vercel/blob' // Import Vercel Blob SDK for deletion
 import { put } from '@vercel/blob' // Import Vercel Blob SDK for upload
 import { nanoid } from 'nanoid' // For unique filenames
-
-// Helper to parse FormData for PATCH requests
-async function parsePatchFormData(req: NextRequest) {
-	const formData = await req.formData()
-	const data: { [key: string]: unknown } = {}
-	let file: File | null = null
-	for (const [key, value] of formData.entries()) {
-		if (value instanceof File) file = value
-		else data[key] = value
-	}
-	return { data, file }
-}
-
-
+import { parseFormData } from '@/lib/utils/formData-utils'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
@@ -62,7 +49,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 			return new NextResponse('Unauthorized', { status: 401 })
 		}
 
-		const { data: formDataValues, file: newFile } = await parsePatchFormData(req)
+		// Define the expected shape of non-file form data for type safety with parseFormData
+		type ReportPatchFormData = Omit<z.infer<typeof reportPatchSchema>, 'file'> // Assuming 'file' is not part of schema for text fields
+
+		const { data: formDataValues, file: newFile } = await parseFormData<ReportPatchFormData>(req)
 
 		// Manually convert reportDate from string to Date if present in formDataValues
 		if (formDataValues.reportDate && typeof formDataValues.reportDate === 'string') {
