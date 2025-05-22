@@ -59,6 +59,7 @@ model User {
   Report       Report[]
   SalesMade    Sale[]         @relation("StaffSales") // Sales processed by this staff member
   Customer     Customer?
+  Supplier     Supplier?
 }
 
 // Model for storing additional user profile information
@@ -160,6 +161,10 @@ model Supplier {
   email         String? @unique
   phone         String?
   address       String?
+
+  // Optional: If this supplier is also a registered user
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

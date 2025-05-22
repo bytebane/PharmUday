@@ -1,4 +1,5 @@
 import { Customer as PrismaCustomer } from '@/generated/prisma'
+import { SaleWithFullDetails } from '@/types/sale'
 
 export async function fetchCustomers_cli(page = 1, limit = 10, search = ''): Promise<{ customers: PrismaCustomer[]; total: number }> {
 	const params = new URLSearchParams({
@@ -33,4 +34,10 @@ export async function fetchCustomerById_cli(id: string): Promise<PrismaCustomer>
 	const res = await fetch(`/api/customers/${id}`)
 	if (!res.ok) throw new Error('Failed to fetch customer')
 	return res.json()
+}
+
+export async function fetchMyOrders_cli(page = 1, limit = 10): Promise<{ sales: SaleWithFullDetails[]; total: number }> {
+	const response = await fetch(`/api/customers/orders?page=${page}&limit=${limit}`)
+	if (!response.ok) throw new Error('Failed to fetch orders')
+	return response.json()
 }

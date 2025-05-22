@@ -68,7 +68,7 @@ export function ReportCategoryList() {
 			if (!confirm('Are you sure you want to delete this report category?')) return
 			deleteMutation.mutate(id)
 		},
-		[deleteMutation]
+		[deleteMutation],
 	)
 
 	const handleFormSuccess = useCallback(() => {
@@ -131,10 +131,10 @@ export function ReportCategoryList() {
 								</div>
 							),
 						} as ColumnDef<PrismaReportCategory>,
-				  ]
+					]
 				: []),
 		],
-		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete],
 	)
 
 	const isAnyFilterActive = !!search

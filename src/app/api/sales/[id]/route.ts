@@ -3,14 +3,13 @@ import { db } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
 
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()
 		if (!user) return new NextResponse('Unauthorized', { status: 401 })
 
 		// Add role-based access control if needed
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
+		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN, Role.CUSTOMER].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST' | 'CUSTOMER')) {
 			return new NextResponse('Unauthorized', { status: 401 })
 		}
 

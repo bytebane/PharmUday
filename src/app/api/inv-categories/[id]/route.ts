@@ -7,12 +7,6 @@ import { categoryPatchSchema } from '@/lib/validations/category'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
 
-interface RouteContext {
-	params: {
-		id: string // Correct parameter name based on file name [id]
-	}
-}
-
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const { id } = await params

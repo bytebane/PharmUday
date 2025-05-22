@@ -50,7 +50,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 				categories: categoryIds
 					? {
 							set: categoryIds.map(id => ({ id })), // Use set to replace existing connections
-					  }
+						}
 					: undefined, // Don't update if not provided
 				supplier:
 					supplierId !== undefined // Check if supplierId was explicitly passed (even if null)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -27,30 +27,12 @@ const customerQueryKeys = {
 	lists: () => [...customerQueryKeys.all, 'list'] as const,
 }
 
-async function saveCustomerAPI(payload: { values: CustomerFormValues; customerId?: string }): Promise<PrismaCustomer> {
-	const { values, customerId } = payload
-	const isEditing = !!customerId
-	const url = isEditing ? `/api/customers/${customerId}` : '/api/customers'
-	const method = isEditing ? 'PATCH' : 'POST'
-
-	const response = await fetch(url, {
-		method: method,
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(values),
-	})
-
-	const result = await response.json()
-
-	if (!response.ok) {
-		const errorMessage = result?.message || result?.error || `Failed to ${isEditing ? 'update' : 'create'} customer`
-		throw new Error(errorMessage)
-	}
-	return result as PrismaCustomer
-}
-
 export function CustomerForm({ customerData, onSuccess }: CustomerFormProps) {
 	const isEditing = !!customerData
 	const queryClient = useQueryClient()
+
+	const [createUserAccount, setCreateUserAccount] = useState(false)
+	const [defaultPassword, setDefaultPassword] = useState('changeme123')
 
 	const form = useForm<CustomerFormValues>({
 		resolver: zodResolver(customerSchema),
@@ -62,13 +44,27 @@ export function CustomerForm({ customerData, onSuccess }: CustomerFormProps) {
 	}, [customerData, form])
 
 	const customerMutation = useMutation({
-		mutationFn: saveCustomerAPI,
+		mutationFn: async ({ values, customerId }: { values: CustomerFormValues; customerId?: string }) => {
+			const isEditing = !!customerId
+			const url = isEditing ? `/api/customers/${customerId}` : '/api/customers'
+			const method = isEditing ? 'PATCH' : 'POST'
+			const response = await fetch(url, {
+				method,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					...values,
+					createUserAccount: !isEditing && createUserAccount, // Only allow on create
+					defaultPassword: !isEditing && createUserAccount ? defaultPassword : undefined,
+				}),
+			})
+			const result = await response.json()
+			if (!response.ok) throw new Error(result?.message || result?.error || `Failed to ${isEditing ? 'update' : 'create'} customer`)
+			return result as PrismaCustomer
+		},
 		onSuccess: data => {
-			// 'data' here is the newly created/updated customer
 			toast.success(`Customer ${isEditing ? 'updated' : 'created'} successfully!`)
 			queryClient.invalidateQueries({ queryKey: customerQueryKeys.lists() })
-			// queryClient.invalidateQueries({ queryKey: ['sales', 'newSaleFormCustomers'] }) // This specific key might not be needed if NewSaleForm refetches
-			onSuccess(data) // Pass the new customer data back
+			onSuccess(data)
 		},
 		onError: (error: Error) => {
 			if (error.message.toLowerCase().includes('email already exists')) {
@@ -159,6 +155,33 @@ export function CustomerForm({ customerData, onSuccess }: CustomerFormProps) {
 					)}
 				/>
 				{/* Add userId field if you want to link to an existing User account from this form */}
+
+				{/* Create user account section */}
+				{!isEditing && (
+					<div className='space-y-2'>
+						<label className='flex items-center gap-2'>
+							<input
+								type='checkbox'
+								checked={createUserAccount}
+								onChange={e => setCreateUserAccount(e.target.checked)}
+							/>
+							Create user account for login
+						</label>
+						{createUserAccount && (
+							<div>
+								<label className='block text-sm font-medium'>
+									Default Password:
+									<input
+										type='text'
+										className='ml-2 border rounded px-2 py-1'
+										value={defaultPassword}
+										onChange={e => setDefaultPassword(e.target.value)}
+									/>
+								</label>
+							</div>
+						)}
+					</div>
+				)}
 
 				<div className='flex justify-end pt-4'>
 					<Button

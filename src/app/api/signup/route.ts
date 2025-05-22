@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { hashPassword } from '@/lib/passwords'
 import { Role } from '@/generated/prisma' // Import Role enum if needed for default assignment
+import { db } from '@/lib/db'
 
 export async function POST(request: Request) {
 	try {
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 		}
 
 		// --- Check if user already exists ---
-		const existingUser = await prisma.user.findUnique({
+		const existingUser = await db.user.findUnique({
 			where: { email: email.toLowerCase() }, // Store emails consistently
 		})
 
@@ -31,10 +31,11 @@ export async function POST(request: Request) {
 		const passwordHash = await hashPassword(password)
 
 		// --- Create User (and Profile if applicable) ---
-		const user = await prisma.user.create({
+		const user = await db.user.create({
 			data: {
 				email: email.toLowerCase(),
 				passwordHash: passwordHash,
+				name: firstName + ' ' + lastName,
 				role: Role.CUSTOMER, // Or determine role based on signup context
 				// Optionally create profile data if provided
 				profile: firstName || lastName ? { create: { firstName, lastName } } : undefined,

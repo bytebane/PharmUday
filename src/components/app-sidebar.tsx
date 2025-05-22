@@ -1,31 +1,33 @@
 'use client'
 
 import * as React from 'react'
-
-import { useRouter, usePathname } from 'next/navigation' // Import useRouter and usePathname
+import { useRouter, usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { LayoutDashboard, Box, Moon, Sun, ChevronsUpDown, FileChartColumnIncreasing, FolderKanban, Users as UsersIcon, Loader2 } from 'lucide-react'
-import { useTheme } from 'next-themes' // Import useTheme
-
-import { Role } from '@/generated/prisma' // Adjust path if necessary
+import { LayoutDashboard, Box, Moon, Sun, ChevronsUpDown, FileChartColumnIncreasing, FolderKanban, Users as UsersIcon, Loader2, LucideIcon } from 'lucide-react'
+import { useTheme } from 'next-themes'
+import { Role } from '@/generated/prisma'
 import { NavMain } from '@/components/nav-main'
 import { NavUser } from '@/components/nav-user'
 import { StoreSwitcher } from '@/components/store-switcher'
-import { Skeleton } from '@/components/ui/skeleton' // Import Skeleton for loading state
+import { Skeleton } from '@/components/ui/skeleton'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenuButton, SidebarMenuItem, SidebarRail } from '@/components/ui/sidebar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
+import Image from 'next/image'
 
 // This is sample data.
 const data = {
-	user: {
-		name: 'shadcn',
-		email: 'm@example.com',
-		avatar: '/avatars/shadcn.jpg',
-	},
 	stores: [
 		{
 			name: 'PharmPilot',
-			logo: '/ppilot.png',
+			logo: () => (
+				<Image
+					src='/ppilot.png'
+					alt='PharmPilot'
+					className='h-6 w-6'
+					width={64}
+					height={64}
+				/>
+			),
 			plan: 'Enterprise',
 		},
 		// {
@@ -60,10 +62,12 @@ const data = {
 				{
 					title: 'Categories',
 					url: '/inventory/categories',
+					requiredRoles: [Role.ADMIN, Role.SUPER_ADMIN, Role.PHARMACIST] as Role[], // Only for Admin and Super Admin
 				},
 				{
 					title: 'Suppliers',
 					url: '/inventory/suppliers',
+					requiredRoles: [Role.ADMIN, Role.SUPER_ADMIN, Role.PHARMACIST] as Role[], // Only for Admin and Super Admin
 				},
 			],
 		},
@@ -81,18 +85,20 @@ const data = {
 				{
 					title: 'Categories',
 					url: '/reports/categories',
+					requiredRoles: [Role.ADMIN, Role.SUPER_ADMIN, Role.PHARMACIST] as Role[], // Only for Admin and Super Admin
 				},
 			],
 		},
 		{
 			title: 'Sales',
 			url: '#',
-			icon: FileChartColumnIncreasing, // Or a shopping cart icon
+			icon: FileChartColumnIncreasing,
 			isActive: true,
+			requiredRoles: [Role.ADMIN, Role.SUPER_ADMIN, Role.PHARMACIST] as Role[], // Only for Admin and Super Admin
 			items: [
 				{
 					title: 'New Sale',
-					url: '/sales', // Link to the New Sale page
+					url: '/sales',
 				},
 				{
 					title: 'Sales History',
@@ -109,6 +115,12 @@ const data = {
 			url: '/admin/users',
 			icon: UsersIcon,
 			requiredRoles: [Role.ADMIN, Role.SUPER_ADMIN] as Role[], // Only for Admin and Super Admin
+		},
+		{
+			title: 'My Orders',
+			url: '/orders',
+			icon: UsersIcon,
+			requiredRoles: [Role.CUSTOMER] as Role[], // Only for Customer
 		},
 		// {
 		// 	title: 'Settings',
@@ -144,7 +156,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 				router.push(url)
 			})
 		},
-		[pathname, router, startTransition]
+		[pathname, router, startTransition],
 	)
 
 	React.useEffect(() => {
@@ -160,7 +172,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		if (!session?.user?.role) return [] // Or return a default set for unauthenticated/loading
 		const userRole = session.user.role
 
-		const processItems = (items: typeof data.navMainBase): any[] => {
+		type NavItem = {
+			title: string
+			url: string
+			icon?: LucideIcon
+			isActive?: boolean
+			requiredRoles?: Role[]
+			items?: NavItem[]
+			iconClassName?: string
+			onClick?: () => void
+			disabled?: boolean
+		}
+
+		const processItems = (items: NavItem[]): NavItem[] => {
 			return items
 				.filter(item => {
 					return !item.requiredRoles || item.requiredRoles.includes(userRole as Role)
@@ -169,7 +193,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 					const isCurrentNavigationTarget = isNavigating && navigatingTo === item.url
 					const actualIcon = isCurrentNavigationTarget ? Loader2 : item.icon
 					const iconClassName = isCurrentNavigationTarget ? 'animate-spin' : ''
-					return { ...item, icon: actualIcon, iconClassName, onClick: () => handleNavigation(item.url), disabled: isCurrentNavigationTarget, items: item.items ? processItems(item.items as any) : undefined, isActive: item.url !== '#' && pathname.startsWith(item.url) }
+					return { ...item, icon: actualIcon, iconClassName, onClick: () => handleNavigation(item.url), disabled: isCurrentNavigationTarget, items: item.items ? processItems(item.items) : undefined, isActive: item.url !== '#' && pathname.startsWith(item.url) }
 				})
 		}
 		return processItems(data.navMainBase)

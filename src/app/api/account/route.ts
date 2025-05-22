@@ -25,7 +25,7 @@ const accountUpdateSchema = z
 		{
 			message: 'Current password and confirmation are required to set a new password.',
 			path: ['currentPassword'], // Or a more general path
-		}
+		},
 	)
 	.refine(data => data.newPassword === data.confirmNewPassword, {
 		message: 'New passwords do not match.',
@@ -36,7 +36,7 @@ const accountUpdateSchema = z
  * GET /api/account
  * Fetches the current authenticated user's account details.
  */
-export async function GET(req: Request) {
+export async function GET() {
 	const session = await getServerSession(authOptions)
 
 	if (!session?.user?.id) {

@@ -73,7 +73,7 @@ export function CategoryList() {
 			if (!confirm('Are you sure you want to delete this category? This might affect subcategories and items.')) return
 			deleteMutation.mutate(id)
 		},
-		[deleteMutation]
+		[deleteMutation],
 	)
 
 	const handleFormSuccess = useCallback(() => {
@@ -147,10 +147,10 @@ export function CategoryList() {
 								</div>
 							),
 						} as ColumnDef<CategoryWithParent>,
-				  ]
+					]
 				: []),
 		],
-		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete],
 	)
 
 	const isAnyFilterActive = !!search

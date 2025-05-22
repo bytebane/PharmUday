@@ -50,8 +50,8 @@ export async function fetchRelatedInventoryData_cli(): Promise<{ categories: Bas
 	const catJson = await catRes.json()
 	const supJson = await supRes.json()
 	// If the API returns { categories: [...] }, extract the array
-	const categories = Array.isArray(catJson) ? catJson : catJson.categories ?? []
-	const suppliers = Array.isArray(supJson) ? supJson : supJson.suppliers ?? supJson ?? []
+	const categories = Array.isArray(catJson) ? catJson : (catJson.categories ?? [])
+	const suppliers = Array.isArray(supJson) ? supJson : (supJson.suppliers ?? supJson ?? [])
 	return { categories, suppliers }
 }
 

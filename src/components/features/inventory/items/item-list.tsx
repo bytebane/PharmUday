@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AddFAB } from '@/components/AddFAB'
+import { useSearchParams } from 'next/navigation'
 
 const itemQueryKeys = {
 	all: ['items'] as const,
@@ -27,14 +28,14 @@ const itemQueryKeys = {
 	relatedData: () => ['relatedData'] as const,
 }
 
-interface ItemListProps {
-	statusFilter?: string
-}
-
-export function ItemList({ statusFilter }: ItemListProps) {
+export function ItemList() {
 	// Session and state
 	const { data: session } = useSession()
 	const queryClient = useQueryClient()
+
+	const searchParams = useSearchParams()
+
+	const urlFilter = searchParams.get('status')
 
 	// Table state
 	const [isSheetOpen, setIsSheetOpen] = useState(false)
@@ -43,13 +44,13 @@ export function ItemList({ statusFilter }: ItemListProps) {
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => {
 		const filters: ColumnFiltersState = []
-		if (statusFilter === 'expiring_soon') filters.push({ id: 'expiry_date', value: 'expiring_soon' })
-		else if (statusFilter === 'out_of_stock') filters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
+		if (urlFilter === 'expiring_soon') filters.push({ id: 'expiry_date', value: 'expiring_soon' })
+		else if (urlFilter === 'out_of_stock') filters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
 		return filters
 	})
 	const [globalFilter, setGlobalFilter] = useState('')
 	const [filters, setFilters] = useState<{ status?: string; categoryId?: string; supplierId?: string; search?: string }>(() => ({
-		status: statusFilter,
+		status: urlFilter ?? undefined,
 	}))
 
 	// Data fetching
@@ -105,7 +106,7 @@ export function ItemList({ statusFilter }: ItemListProps) {
 			if (!confirm('Are you sure you want to delete this item?')) return
 			deleteMutation.mutate(id)
 		},
-		[deleteMutation]
+		[deleteMutation],
 	)
 
 	const handleFormSuccess = useCallback(() => {
@@ -268,29 +269,29 @@ export function ItemList({ statusFilter }: ItemListProps) {
 								</div>
 							),
 						} as ColumnDef<ItemWithRelations>,
-				  ]
+					]
 				: []),
 		],
-		[deleteMutation, handleEdit, handleDelete, globalFilterFn, session?.user?.role]
+		[deleteMutation, handleEdit, handleDelete, globalFilterFn, session?.user?.role],
 	)
 
-	// Sync column filters with statusFilter prop
+	// Sync column filters with urlFilter prop
 	useEffect(() => {
 		setColumnFilters(prevFilters => {
 			const updatedFilters = prevFilters.filter(f => f.id !== 'expiry_date' && f.id !== 'quantity_in_stock')
-			if (statusFilter === 'expiring_soon') updatedFilters.push({ id: 'expiry_date', value: 'expiring_soon' })
-			else if (statusFilter === 'out_of_stock') updatedFilters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
+			if (urlFilter === 'expiring_soon') updatedFilters.push({ id: 'expiry_date', value: 'expiring_soon' })
+			else if (urlFilter === 'out_of_stock') updatedFilters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
 			const prev = JSON.stringify([...prevFilters].sort((a, b) => String(a.id).localeCompare(String(b.id))))
 			const next = JSON.stringify([...updatedFilters].sort((a, b) => String(a.id).localeCompare(String(b.id))))
 			return prev !== next ? updatedFilters : prevFilters
 		})
-	}, [statusFilter])
+	}, [urlFilter])
 
-	// Sync filters and pagination with statusFilter prop
+	// Sync filters and pagination with urlFilter prop
 	useEffect(() => {
-		setFilters(f => ({ ...f, status: statusFilter }))
+		setFilters(f => ({ ...f, status: urlFilter ?? undefined }))
 		setPagination(p => ({ ...p, pageIndex: 0 }))
-	}, [statusFilter])
+	}, [urlFilter])
 
 	const isLoading = isLoadingItems || isLoadingRelated
 	const error = itemsError || relatedError
@@ -454,4 +455,3 @@ export function ItemList({ statusFilter }: ItemListProps) {
 		</div>
 	)
 }
-

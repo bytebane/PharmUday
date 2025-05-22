@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -27,31 +27,12 @@ const supplierQueryKeys = {
 	lists: () => [...supplierQueryKeys.all, 'list'] as const,
 }
 
-async function saveSupplierAPI(payload: { values: SupplierFormValues; supplierId?: string }): Promise<PrismaSupplier> {
-	const { values, supplierId } = payload
-	const isEditing = !!supplierId
-	const url = isEditing ? `/api/suppliers/${supplierId}` : '/api/suppliers'
-	const method = isEditing ? 'PATCH' : 'POST'
-
-	// The `values` should already match the supplierSchema structure
-	const response = await fetch(url, {
-		method: method,
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(values),
-	})
-
-	const result = await response.json()
-
-	if (!response.ok) {
-		const errorMessage = result?.message || result?.error || `Failed to ${isEditing ? 'update' : 'create'} supplier`
-		throw new Error(errorMessage)
-	}
-	return result as PrismaSupplier
-}
-
 export function SupplierForm({ supplierData, onSuccess }: SupplierFormProps) {
 	const isEditing = !!supplierData
 	const queryClient = useQueryClient()
+
+	const [createUserAccount, setCreateUserAccount] = useState(false)
+	const [defaultPassword, setDefaultPassword] = useState('changeme123')
 
 	const form = useForm<SupplierFormValues>({
 		resolver: zodResolver(supplierSchema),
@@ -63,7 +44,23 @@ export function SupplierForm({ supplierData, onSuccess }: SupplierFormProps) {
 	}, [supplierData, form])
 
 	const supplierMutation = useMutation({
-		mutationFn: saveSupplierAPI,
+		mutationFn: async ({ values, supplierId }: { values: SupplierFormValues; supplierId?: string }) => {
+			const isEditing = !!supplierId
+			const url = isEditing ? `/api/suppliers/${supplierId}` : '/api/suppliers'
+			const method = isEditing ? 'PATCH' : 'POST'
+			const response = await fetch(url, {
+				method,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					...values,
+					createUserAccount: !isEditing && createUserAccount, // Only allow on create
+					defaultPassword: !isEditing && createUserAccount ? defaultPassword : undefined,
+				}),
+			})
+			const result = await response.json()
+			if (!response.ok) throw new Error(result?.message || result?.error || `Failed to ${isEditing ? 'update' : 'create'} supplier`)
+			return result as PrismaSupplier
+		},
 		onSuccess: () => {
 			toast.success(`Supplier ${isEditing ? 'updated' : 'created'} successfully!`)
 			queryClient.invalidateQueries({ queryKey: supplierQueryKeys.lists() })
@@ -178,6 +175,33 @@ export function SupplierForm({ supplierData, onSuccess }: SupplierFormProps) {
 						</FormItem>
 					)}
 				/>
+
+				{/* User account creation section - only for new suppliers */}
+				{!isEditing && (
+					<div className='space-y-2'>
+						<label className='flex items-center gap-2'>
+							<input
+								type='checkbox'
+								checked={createUserAccount}
+								onChange={e => setCreateUserAccount(e.target.checked)}
+							/>
+							Create user account for login
+						</label>
+						{createUserAccount && (
+							<div>
+								<label className='block text-sm font-medium'>
+									Default Password:
+									<input
+										type='text'
+										className='ml-2 border rounded px-2 py-1'
+										value={defaultPassword}
+										onChange={e => setDefaultPassword(e.target.value)}
+									/>
+								</label>
+							</div>
+						)}
+					</div>
+				)}
 
 				<div className='flex justify-end pt-4'>
 					<Button

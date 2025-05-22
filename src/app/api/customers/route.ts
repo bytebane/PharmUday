@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { customerSchema } from '@/lib/validations/customer'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
+import bcrypt from 'bcryptjs'
 
 const paginationSchema = z.object({
 	page: z.coerce.number().min(1).default(1),
@@ -47,24 +48,40 @@ export async function POST(req: NextRequest) {
 		}
 
 		const json = await req.json()
-		const body = customerSchema.parse(json)
+		const { createUserAccount, defaultPassword, ...body } = json
 
-		if (body.email) {
-			const existingCustomerByEmail = await db.customer.findUnique({ where: { email: body.email } })
-			if (existingCustomerByEmail) {
-				return NextResponse.json({ message: 'A customer with this email already exists.' }, { status: 409 })
-			}
+		const customerValidation = customerSchema.safeParse(body)
+		if (!customerValidation.success) {
+			return NextResponse.json({ issues: customerValidation.error.issues }, { status: 422 })
+		}
+
+		let userId: string | undefined = undefined
+
+		if (createUserAccount) {
+			// Create user account for customer
+			const hashedPassword = await bcrypt.hash(defaultPassword || 'changeme123', 10)
+			const user = await db.user.create({
+				data: {
+					email: body.email,
+					name: body.name,
+					passwordHash: hashedPassword,
+					role: Role.CUSTOMER,
+					isActive: true,
+					emailVerified: new Date(),
+				},
+			})
+			userId = user.id
 		}
 
 		const newCustomer = await db.customer.create({
-			data: body,
+			data: {
+				...body,
+				userId,
+			},
 		})
 
 		return NextResponse.json(newCustomer, { status: 201 })
 	} catch (error) {
-		if (error instanceof z.ZodError) {
-			return NextResponse.json({ issues: error.issues }, { status: 422 })
-		}
 		console.error('[CUSTOMERS_POST]', error)
 		return NextResponse.json({ message: 'Internal Server Error', error: error instanceof Error ? error.message : String(error) }, { status: 500 })
 	}

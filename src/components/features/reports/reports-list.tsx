@@ -93,7 +93,7 @@ export function ReportList() {
 			if (!confirm('Are you sure you want to delete this report?')) return
 			deleteMutation.mutate(id)
 		},
-		[deleteMutation]
+		[deleteMutation],
 	)
 
 	const handleFormSuccess = useCallback(() => {
@@ -178,10 +178,10 @@ export function ReportList() {
 								</div>
 							),
 						} as ColumnDef<ReportWithRelations>,
-				  ]
+					]
 				: []),
 		],
-		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete],
 	)
 
 	const isAnyFilterActive = !!search || categoryFilter !== 'all' || !!dateRange.from || (dateRange.to && dateRange.to !== today)

@@ -18,7 +18,7 @@ const userFormSchema = z.object({
 	email: z.string().email({ message: 'Invalid email address.' }),
 	password: z.string().optional(), // Optional for edit, required for create if not provided
 	role: z.nativeEnum(Role),
-	isActive: z.boolean().default(true),
+	isActive: z.boolean(),
 })
 
 export type UserFormData = z.infer<typeof userFormSchema>

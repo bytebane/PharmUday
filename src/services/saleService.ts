@@ -1,4 +1,4 @@
-import { SaleWithBasicRelations } from '@/app/(main)/sales/history/page'
+import { SaleWithBasicRelations } from '@/types/sale'
 import { SaleCreateFormValues } from '@/lib/validations/sale'
 
 export async function fetchSalesHistory_cli(page = 1, limit = 10, filters: { search?: string; period?: string } = {}): Promise<{ sales: SaleWithBasicRelations[]; total: number }> {
@@ -9,7 +9,7 @@ export async function fetchSalesHistory_cli(page = 1, limit = 10, filters: { sea
 		...(filters.period ? { period: filters.period } : {}),
 	})
 	const response = await fetch(`/api/sales?${params.toString()}`)
-	if (!response.ok) throw new Error('Failed to fetch sales history')
+	if (!response.ok) throw new Error(response.statusText + ' ' + response.status)
 	const result = await response.json()
 	return {
 		sales: Array.isArray(result.sales) ? result.sales : [],

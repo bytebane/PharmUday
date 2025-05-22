@@ -10,7 +10,7 @@ export const itemSchema = z.object({
 	schedule: z.string().optional(),
 	description: z.string().optional(),
 	image: z.string().url().optional().or(z.literal('')), // Allow empty string or valid URL
-	thumbnailUrls: z.array(z.string().url()).optional().default([]),
+	thumbnailUrls: z.array(z.string().url()).default([]),
 	units_per_pack: z.number().int().positive().optional().nullable(),
 	price: z.number().positive('Price must be positive'),
 	tax_rate: z.number().min(0).optional().nullable(),
@@ -24,7 +24,7 @@ export const itemSchema = z.object({
 	purchase_date: z.coerce.date().optional().nullable(), // Coerce string/number to Date
 	sales_data: z.any().optional(), // Keep as any for now, refine if needed
 	// --- Relations ---
-	categoryIds: z.array(z.string().cuid()).optional().default([]), // Array of Category CUIDs
+	categoryIds: z.array(z.string().cuid()).default([]), // Array of Category CUIDs
 	supplierId: z.string().cuid().optional().nullable(), // Optional CUID for Supplier
 })
 

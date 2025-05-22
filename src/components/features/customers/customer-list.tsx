@@ -68,7 +68,7 @@ export function CustomerList() {
 			if (!confirm('Are you sure you want to delete this customer? Associated sales records will have their customer link removed.')) return
 			deleteMutation.mutate(id)
 		},
-		[deleteMutation]
+		[deleteMutation],
 	)
 
 	const handleFormSuccess = useCallback(() => {
@@ -142,10 +142,10 @@ export function CustomerList() {
 								</div>
 							),
 						} as ColumnDef<PrismaCustomer>,
-				  ]
+					]
 				: []),
 		],
-		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete],
 	)
 
 	const isAnyFilterActive = !!search

@@ -71,7 +71,7 @@ export function CategoryForm({ categoryData, allCategories, onSuccess }: Categor
 
 	const categoryMutation = useMutation({
 		mutationFn: saveCategoryAPI,
-		onSuccess: (data, variables) => {
+		onSuccess: () => {
 			toast.success(`Category ${isEditing ? 'updated' : 'created'} successfully!`)
 			queryClient.invalidateQueries({ queryKey: categoryQueryKeys.lists() })
 			onSuccess()

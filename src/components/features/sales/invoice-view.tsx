@@ -1,21 +1,43 @@
 'use client'
 
-import { SaleWithFullDetails } from '@/app/(main)/sales/[id]/page' // Import the detailed type
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { format } from 'date-fns'
 import { Printer } from 'lucide-react'
 
+import type { SaleWithFullDetails } from '@/types/sale'
+
 interface InvoiceViewProps {
-	saleDetails: SaleWithFullDetails
+	saleId: string
 }
 
-export function InvoiceView({ saleDetails }: InvoiceViewProps) {
-	const handlePrint = () => {
-		window.print()
-	}
+export function InvoiceView({ saleId }: InvoiceViewProps) {
+	const [saleDetails, setSaleDetails] = useState<SaleWithFullDetails | null>(null)
+	const [loading, setLoading] = useState(true)
+	const [error, setError] = useState<string | null>(null)
 
-	if (!saleDetails) return <p>Loading invoice details...</p>
+	useEffect(() => {
+		setLoading(true)
+		fetch(`/api/sales/${saleId}`)
+			.then(async res => {
+				if (!res.ok) throw new Error('Failed to fetch sale details')
+				return res.json()
+			})
+			.then(data => {
+				setSaleDetails(data)
+				setError(null)
+			})
+			.catch(err => setError(err.message))
+			.finally(() => setLoading(false))
+	}, [saleId])
+
+	const handlePrint = () => window.print()
+
+	if (loading) return <p>Loading invoice details...</p>
+	if (error) return <p className='text-red-600'>{error}</p>
+	if (!saleDetails) return <p>No invoice found.</p>
+
 	const { invoice, customer, staff, saleItems, saleDate, subTotal, totalDiscount, totalTax, grandTotal, paymentMethod } = saleDetails
 
 	return (

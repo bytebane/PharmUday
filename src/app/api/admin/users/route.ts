@@ -96,26 +96,42 @@ export async function POST(req: Request) {
 
 		const hashedPassword = await bcrypt.hash(password, 10)
 
+		// Create user
 		const newUser = await db.user.create({
 			data: {
 				email,
 				name,
 				passwordHash: hashedPassword,
 				role: roleToAssign as Role,
-				isActive: true, // New users are active by default
-				// For admin-created users, you might consider them verified or skip verification.
-				emailVerified: new Date(), // Or null, depending on your logic
-			},
-			select: {
-				// Only return non-sensitive fields
-				id: true,
-				email: true,
-				name: true,
-				role: true,
 				isActive: true,
-				createdAt: true,
+				emailVerified: new Date(),
 			},
+			select: { id: true, email: true, name: true, role: true },
 		})
+
+		// If user is CUSTOMER, create Customer entry
+		if (roleToAssign === Role.CUSTOMER) {
+			await db.customer.create({
+				data: {
+					name,
+					email,
+					userId: newUser.id,
+					// ...add other fields if needed
+				},
+			})
+		}
+
+		// If user is SELLER, create Supplier entry
+		if (roleToAssign === Role.SELLER) {
+			await db.supplier.create({
+				data: {
+					name,
+					email,
+					userId: newUser.id,
+					// ...add other fields if needed
+				},
+			})
+		}
 
 		return NextResponse.json(newUser, { status: 201 })
 	} catch (error) {

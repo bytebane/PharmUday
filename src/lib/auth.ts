@@ -1,24 +1,22 @@
 import { type NextAuthOptions, type User as NextAuthUser, Session, getServerSession } from 'next-auth' // Import getServerSession
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import { db, db as prisma } from '@/lib/db' // Corrected import path for prisma client
+import { db } from '@/lib/db' // Corrected import path for prisma client
 import { comparePassword } from '@/lib/passwords' // Import password comparison utility
 import { Role } from '@/generated/prisma' // Import Role enum
 
 // Extend the default User and Session types to include your custom fields (like role)
 declare module 'next-auth' {
-	interface User extends NextAuthUser {
+	interface CustomUser extends NextAuthUser {
 		role: Role
-		// Add other custom fields from your User model if needed in the session/token
-		// isActive: boolean;
+		id: string
 	}
 	interface Session {
 		// Ensure the Session.user type includes all properties you add in the session callback
-		user: {
-			// This structure should match what you return in the session callback
-			// Make sure user object in session includes the role
-			id: string // Add id to the session user
-			role: Role // Add role to the session user type
+		// Make sure user object in session includes the role
+		user: CustomUser & {
+			role: Role
+			id: string
 			name: string // Add name to the session user type
 			email: string // Add email to the session user type
 			image?: string // Optional image field
@@ -49,14 +47,14 @@ export const authOptions: NextAuthOptions = {
 					return null // Missing credentials
 				}
 
-				const user = await prisma.user.findUnique({
+				const user = await db.user.findUnique({
 					where: { email: credentials.email },
 				})
 
 				// Check if user exists and password is correct
 				if (user && user.passwordHash && (await comparePassword(credentials.password, user.passwordHash))) {
 					// Return user object that matches the session/JWT structure
-					return { id: user.id, email: user.email, name: user.email, role: user.role /* add other fields if needed */ }
+					return { id: user.id, email: user.email, name: user.name, role: user.role /* add other fields if needed */ }
 				} else {
 					return null // Authentication failed
 				}
@@ -71,9 +69,11 @@ export const authOptions: NextAuthOptions = {
 		// Include user role and ID in the JWT
 		async jwt({ token, user }) {
 			if (user) {
-				token.id = user.id
-				token.role = user.role
-				// token.isActive = user.isActive; // Add other fields if needed
+				// Explicitly type user as CustomUser to avoid 'any' type error
+				const customUser = user as NextAuthUser & { id: string; role: Role }
+				token.id = customUser.id
+				token.role = customUser.role
+				// token.isActive = customUser.isActive; // Add other fields if needed
 			}
 			return token
 		},

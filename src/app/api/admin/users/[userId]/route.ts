@@ -4,23 +4,17 @@ import { db as prisma } from '@/lib/db'
 import { Role } from '@/generated/prisma'
 import { authorize, AuthenticatedUser } from '@/lib/utils/auth-utils'
 
-interface Context {
-	params: {
-		userId: string
-	}
-}
-
 /**
  * GET /api/admin/users/[userId]
  * Fetches a single user by ID.
  */
-export async function GET(req: Request, context: Context) {
+export async function GET(req: Request, { params }: { params: Promise<{ userId: string }> }) {
 	const authResult = await authorize([Role.ADMIN, Role.SUPER_ADMIN])
 	if (authResult.response) {
 		return authResult.response
 	}
 
-	const { userId } = context.params
+	const { userId } = await params
 	try {
 		const user = await prisma.user.findUnique({
 			where: { id: userId },
@@ -49,13 +43,13 @@ export async function GET(req: Request, context: Context) {
  * PUT /api/admin/users/[userId]
  * Updates a user.
  */
-export async function PUT(req: Request, context: Context) {
+export async function PUT(req: Request, { params }: { params: Promise<{ userId: string }> }) {
 	const authResult = await authorize([Role.ADMIN, Role.SUPER_ADMIN])
 	if (authResult.response) {
 		return authResult.response
 	}
 	const { user: currentUser } = authResult as { user: AuthenticatedUser } // User is guaranteed non-null
-	const { userId } = context.params
+	const { userId } = await params
 	const currentUserId = currentUser.id
 	const currentUserRole = currentUser.role as Role
 
@@ -133,13 +127,13 @@ export async function PUT(req: Request, context: Context) {
  * DELETE /api/admin/users/[userId]
  * Deletes a user.
  */
-export async function DELETE(req: Request, context: Context) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ userId: string }> }) {
 	const authResult = await authorize([Role.ADMIN, Role.SUPER_ADMIN])
 	if (authResult.response) {
 		return authResult.response
 	}
 	const { user: currentUser } = authResult as { user: AuthenticatedUser } // User is guaranteed non-null
-	const { userId } = context.params
+	const { userId } = await params
 	const currentUserId = currentUser.id
 	const currentUserRole = currentUser.role as Role
 	if (userId === currentUserId) {

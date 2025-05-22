@@ -14,7 +14,6 @@ import { Input } from '@/components/ui/input'
 import { AddFAB } from '@/components/AddFAB'
 import { fetchUsers_cli, createUser_cli, updateUser_cli, deleteUser_cli } from '@/services/userService'
 import { UserForm } from '@/components/admin/user-form'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 
 export function UsersList() {
 	const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -148,7 +147,7 @@ export function UsersList() {
 				),
 			},
 		],
-		[deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
+		[deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete],
 	)
 
 	const isAnyFilterActive = !!search

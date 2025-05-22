@@ -46,9 +46,8 @@ export function NavMain({ items }: { items: NavItemProps[] }) {
 										{item.items?.map((subItem: NavItemProps) => (
 											<SidebarMenuSubItem key={subItem.title}>
 												<SidebarMenuSubButton
-													onClick={subItem.onClick}
-													disabled={subItem.disabled}
-													className={subItem.isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''}>
+													onClick={subItem.disabled ? undefined : subItem.onClick}
+													className={`${subItem.isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''} ${subItem.disabled ? 'opacity-50 pointer-events-none cursor-not-allowed' : ''}`}>
 													{/* Sub-items might not have icons defined in original data, but AppSidebar adds Loader2 if it's the target */}
 													{subItem.icon && <subItem.icon className={subItem.iconClassName} />}
 													<span>{subItem.title}</span>
@@ -70,7 +69,7 @@ export function NavMain({ items }: { items: NavItemProps[] }) {
 								<span>{item.title}</span>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
-					)
+					),
 				)}
 			</SidebarMenu>
 		</SidebarGroup>

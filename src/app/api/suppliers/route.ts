@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
-import { supplierSchema } from '@/lib/validations/supplier'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
+import bcrypt from 'bcryptjs'
 
 const paginationSchema = z.object({
 	page: z.coerce.number().min(1).default(1),
@@ -48,16 +48,30 @@ export async function POST(req: Request) {
 		}
 
 		const json = await req.json()
-		const body = supplierSchema.parse(json)
+		const { createUserAccount, defaultPassword, ...body } = json
 
-		// Check if supplier name already exists (optional, based on requirements)
-		// const existingSupplier = await db.supplier.findFirst({ where: { name: body.name } });
-		// if (existingSupplier) {
-		//   return new NextResponse("Supplier with this name already exists", { status: 409 }); // Conflict
-		// }
+		let userId: string | undefined = undefined
+
+		if (createUserAccount) {
+			const hashedPassword = await bcrypt.hash(defaultPassword || 'changeme123', 10)
+			const newUser = await db.user.create({
+				data: {
+					email: body.email,
+					name: body.name,
+					passwordHash: hashedPassword,
+					role: Role.SELLER,
+					isActive: true,
+					emailVerified: new Date(),
+				},
+			})
+			userId = newUser.id
+		}
 
 		const supplier = await db.supplier.create({
-			data: body,
+			data: {
+				...body,
+				userId,
+			},
 		})
 
 		return NextResponse.json(supplier, { status: 201 })

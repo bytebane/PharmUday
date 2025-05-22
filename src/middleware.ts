@@ -30,7 +30,21 @@ export async function middleware(req: NextRequest) {
 		return NextResponse.redirect(loginUrl)
 	}
 
-	// If authenticated, allow the request to proceed
+	// --- RBAC: Restrict certain API routes to privileged roles ---
+	const adminOnlyApiPatterns = [
+		/^\/api\/categories/,
+		// /^\/api\/report-categories/,
+		// /^\/api\/sales/,
+		// Add more as needed
+	]
+
+	const privilegedRoles = ['ADMIN', 'SUPER_ADMIN', 'PHARMACIST']
+
+	if (adminOnlyApiPatterns.some(pattern => pattern.test(pathname)) && !privilegedRoles.includes(token.role)) {
+		return NextResponse.json({ message: 'Forbidden' }, { status: 403 })
+	}
+
+	// If authenticated and authorized, allow the request to proceed
 	return NextResponse.next()
 }
 
@@ -46,6 +60,9 @@ export const config = {
 		 * - favicon.ico (favicon file)
 		 * - login, signup (public pages - handled specifically above)
 		 */
-		'/((?!api|_next/static|_next/image|favicon.ico|login|signup).*)',
+		'/((?!api/auth|_next/static|_next/image|favicon.ico|login|signup).*)',
+		'/api/categories/:path*',
+		// '/api/report-categories/:path*',
+		// '/api/sales/:path*',
 	],
 }

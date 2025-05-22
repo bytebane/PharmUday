@@ -5,7 +5,6 @@ import { customerSchema } from '@/lib/validations/customer'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
 
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const user = await getCurrentUser()

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { reportCreateSchema } from '@/lib/validations/report'
-import { Role } from '@/generated/prisma'
 import { getCurrentUser } from '@/lib/auth'
 import { put } from '@vercel/blob' // Import Vercel Blob SDK
 import { nanoid } from 'nanoid' // For generating unique filenames

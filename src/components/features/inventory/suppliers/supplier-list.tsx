@@ -33,7 +33,7 @@ export function SupplierList() {
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [search, setSearch] = useState('')
 
-	const canModify = session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST
+	const canModify = session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST || session?.user?.role === Role.SUPER_ADMIN
 
 	const { data, isLoading, error } = useQuery<{ suppliers: PrismaSupplier[]; total: number }, Error>({
 		queryKey: ['suppliers', 'list', pagination.pageIndex, pagination.pageSize, search],
@@ -69,7 +69,7 @@ export function SupplierList() {
 			if (!confirm('Are you sure you want to delete this supplier? This might affect associated items.')) return
 			deleteMutation.mutate(id)
 		},
-		[deleteMutation]
+		[deleteMutation],
 	)
 
 	const handleFormSuccess = useCallback(() => {
@@ -154,10 +154,10 @@ export function SupplierList() {
 								</div>
 							),
 						} as ColumnDef<PrismaSupplier>,
-				  ]
+					]
 				: []),
 		],
-		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete]
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete],
 	)
 
 	const isAnyFilterActive = !!search

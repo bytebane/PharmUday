@@ -1,7 +1,8 @@
-import { headers } from 'next/headers'
 import { getCurrentUser } from '@/lib/auth' // To get the current user's role
 import { Role } from '@/generated/prisma' // Import Role enum
 import { StatCard } from '@/components/custom/stat-card'
+import { getDashboardStatsFromDb } from '@/services/dashboardService'
+
 interface DashboardStats {
 	itemStats: {
 		expiringSoonCount: number
@@ -17,42 +18,22 @@ interface DashboardStats {
 	allTimeSales: { totalAmount: number; transactionCount: number } // <-- Add this line
 }
 
-async function getDashboardStats(): Promise<DashboardStats | null> {
-	try {
-		// Construct the full URL for server-side fetch
-		const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000'
-		const response = await fetch(`${baseUrl}/api/dashboard/stats`, {
-			method: 'GET',
-			headers: {
-				cookie: (await headers()).get('cookie') || '', // Pass along cookies for authentication
-				'Content-Type': 'application/json',
-			},
-			cache: 'no-store', // Ensure fresh data for dashboard
-		})
-
-		if (!response.ok) {
-			console.error('Failed to fetch dashboard stats, status:', response.status)
-			return null
-		}
-		return response.json()
-	} catch (error) {
-		console.error('Error fetching dashboard stats:', error)
-		return null
-	}
-}
-
 export default async function DashboardPage() {
 	const currentUser = await getCurrentUser()
 	const userRole = currentUser?.role as Role // Cast to your Role enum
 
 	// Admins, Pharmacists, Super Admins see the full stats dashboard
 	if (userRole === Role.ADMIN || userRole === Role.SUPER_ADMIN || userRole === Role.PHARMACIST) {
-		const stats = await getDashboardStats()
+		let stats: DashboardStats | null = null
+		try {
+			stats = await getDashboardStatsFromDb()
+		} catch (error) {
+			console.error('Error fetching dashboard stats:', error)
+		}
 
 		if (!stats) {
 			return (
 				<div className='container mx-auto p-4 md:p-8'>
-					<h1 className='mb-6 text-3xl font-bold'>Dashboard</h1>
 					<p className='text-destructive'>Could not load dashboard statistics. Please try again later.</p>
 				</div>
 			)
@@ -62,7 +43,6 @@ export default async function DashboardPage() {
 
 		return (
 			<div className='container mx-auto p-4 md:p-8'>
-				<h1 className='mb-6 text-3xl font-bold'>Pharmacy Dashboard</h1>
 				<div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
 					{/* Item Stats */}
 					<StatCard

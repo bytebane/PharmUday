@@ -40,7 +40,7 @@ export function CustomDataTable<TData, TValue>({ columns, data, isLoading = fals
 				} else {
 					externalOnSortingChange(updaterOrValue)
 				}
-		  }
+			}
 		: setInternalSorting
 
 	const handleColumnFiltersChange: Parameters<typeof useReactTable>[0]['onColumnFiltersChange'] = externalOnColumnFiltersChange
@@ -51,7 +51,7 @@ export function CustomDataTable<TData, TValue>({ columns, data, isLoading = fals
 				} else {
 					externalOnColumnFiltersChange(updaterOrValue)
 				}
-		  }
+			}
 		: undefined
 
 	const [internalPagination, setInternalPagination] = React.useState<{ pageIndex: number; pageSize: number }>({
@@ -67,7 +67,7 @@ export function CustomDataTable<TData, TValue>({ columns, data, isLoading = fals
 				} else {
 					externalOnPaginationChange(updaterOrValue)
 				}
-		  }
+			}
 		: setInternalPagination
 
 	const table: TanstackTableType<TData> = useReactTable({

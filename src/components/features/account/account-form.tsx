@@ -33,7 +33,7 @@ const accountFormSchema = z
 		{
 			message: 'To change password, please fill Current Password, New Password, and Confirm New Password.',
 			path: ['currentPassword'], // General path, or specific to one of them
-		}
+		},
 	)
 	.refine(
 		data => {
@@ -45,7 +45,7 @@ const accountFormSchema = z
 		{
 			message: 'New password must be at least 6 characters.',
 			path: ['newPassword'],
-		}
+		},
 	)
 	.refine(data => data.newPassword === data.confirmNewPassword, {
 		message: "New passwords don't match.",

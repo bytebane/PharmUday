@@ -5,8 +5,6 @@ import { reportCategorySchema } from '@/lib/validations/report-category'
 import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
 
-
-
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
 		const { id } = await params
