@@ -17,6 +17,7 @@ Ensure you have the following installed on your system:
 ### Installation & Setup
 
 1.  **Clone the repository (if you haven't already):**
+
     ```bash
     git clone https://github.com/bytebane/pharmpilot.git
     cd pharmpilot
@@ -24,23 +25,29 @@ Ensure you have the following installed on your system:
 
 2.  **Set up environment variables:**
     Copy the example environment file to a new `.env` file:
+
     ```bash
     cp .example.env .env
     ```
+
     Now, open the newly created `.env` file and fill in the required environment variables, especially `DATABASE_URL` with your PostgreSQL connection string, and `NEXTAUTH_SECRET`. You'll also need `BLOB_READ_WRITE_TOKEN` if you're using Vercel Blob for file storage.
 
 3.  **Install dependencies:**
     Using Bun, install the project dependencies:
+
     ```bash
     bun install
     ```
 
 4.  **Run database migrations:**
     Apply any pending database migrations to set up your schema:
+
     ```bash
     npx prisma migrate dev
     ```
+
     You might also want to seed your database with initial data (if a seed script is configured):
+
     ```bash
     npx prisma db seed
     ```

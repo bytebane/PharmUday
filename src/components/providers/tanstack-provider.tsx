@@ -16,7 +16,7 @@ export function TanProviders({ children }: { children: React.ReactNode }) {
 						staleTime: 1000 * 60 * 5, // 5 minutes
 					},
 				},
-			})
+			}),
 	)
 
 	return (

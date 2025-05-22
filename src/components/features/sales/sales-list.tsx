@@ -1,25 +1,29 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
-import { SaleWithBasicRelations } from '@/app/(main)/sales/history/page'
+import { SaleWithBasicRelations } from '@/types/sale'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Eye, MoreHorizontal, ArrowUpDown } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ColumnDef, SortingState, PaginationState } from '@tanstack/react-table'
 import { Input } from '@/components/ui/input'
 import { fetchSalesHistory_cli } from '@/services/saleService'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CustomDataTable } from '@/components/custom/custom-data-table'
 
-export function SalesHistoryList({ periodFilter }: { periodFilter?: string }) {
+export function SalesHistoryList() {
 	const router = useRouter()
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
 	const [search, setSearch] = useState('')
+
+	const searchParams = useSearchParams()
+
+	const urlFilter = searchParams.get('period')
 	// Use the prop as initial state, fallback to 'all_time'
-	const [period, setPeriod] = useState(periodFilter || 'all_time')
+	const [period, setPeriod] = useState(urlFilter || 'all_time')
 
 	const { data, isLoading, error } = useQuery<{ sales: SaleWithBasicRelations[]; total: number }, Error>({
 		queryKey: ['salesHistory', 'list', pagination.pageIndex, pagination.pageSize, search, period],
@@ -124,13 +128,13 @@ export function SalesHistoryList({ periodFilter }: { periodFilter?: string }) {
 				),
 			},
 		],
-		[router]
+		[router],
 	)
 
 	useEffect(() => {
-		if (periodFilter && periodFilter !== period) setPeriod(periodFilter)
+		if (urlFilter && urlFilter !== period) setPeriod(urlFilter)
 		// Optionally reset pagination or search here if needed
-	}, [periodFilter])
+	}, [urlFilter])
 
 	if (error) return <div className='text-red-600'>Error: {error.message}</div>
 
