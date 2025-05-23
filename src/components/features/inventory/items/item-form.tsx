@@ -5,7 +5,7 @@
 import { useEffect } from 'react'
 import { SubmitHandler, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { format } from 'date-fns'
+import { format, startOfToday, addYears } from 'date-fns'
 import { CalendarIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import * as z from 'zod'
@@ -150,6 +150,9 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 	const onSubmit: SubmitHandler<ItemFormValues> = values => {
 		itemMutation.mutate({ values, itemId: itemData?.id })
 	}
+
+	const today = startOfToday()
+	const fiftyYearsFromToday = addYears(today, 50)
 
 	return (
 		<Form {...form}>
@@ -503,6 +506,8 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 											selected={field.value ?? undefined}
 											onSelect={date => field.onChange(date ?? null)}
 											initialFocus
+											startMonth={today} // Only allow today and future
+											endMonth={fiftyYearsFromToday} // Only allow today and future
 										/>
 									</PopoverContent>
 								</Popover>
@@ -535,6 +540,7 @@ export function ItemForm({ itemData, categories, suppliers, onSuccess }: ItemFor
 											selected={field.value ?? undefined}
 											onSelect={date => field.onChange(date ?? null)}
 											initialFocus
+											endMonth={today} // Only allow today and past
 										/>
 									</PopoverContent>
 								</Popover>
