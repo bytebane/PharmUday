@@ -1,6 +1,6 @@
 # ---- Base Stage ----
 # Common setup for both development and production builds
-FROM node:23-alpine AS common_base
+FROM node:24-slim AS common_base
 # Set the working directory in the container
 WORKDIR /app
 
@@ -40,7 +40,7 @@ RUN npm run build # This will use the `output: 'standalone'` from next.config.js
 
 # ---- Production Stage ----
 # Creates a lean image for running the production application
-FROM node:23-slim AS production
+FROM node:24-slim AS production
 WORKDIR /app
 ENV NODE_ENV=production
 
