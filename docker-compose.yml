@@ -1,49 +1,68 @@
 services:
-    # Development service configuration
-    app-dev: # Renamed for clarity, or you can keep 'app' and assign it the 'dev' profile
-        build:
-            context: .
-            dockerfile: Dockerfile
-            target: development # Target the 'development' stage in Dockerfile
-        ports:
-            - '3000:3000'
-        volumes:
-            - .:/app # Mount local code for hot-reloading
-            # Anonymous volume for node_modules to use container's version
-            - /app/node_modules
-            # Anonymous volume for .next cache in development
-            - /app/.next
-        env_file:
-            - .env # Load development environment variables
-        # environment: # Uncomment if hot-reloading issues persist
-        #   WATCHPACK_POLLING: "true"
-        # CHOKIDAR_USEPOLLING: "true" # Alternative for older Webpack/Chokidar versions
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--api.insecure=true" # Remove in production if you don't want the dashboard open
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=sandbox@reniyal.dev"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080" # Traefik dashboard (optional)
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "letsencrypt:/letsencrypt"
+    networks:
+      - web
 
-        profiles:
-            - dev # This service will run if 'dev' profile is active, or if no profile is specified (default-like behavior)
+  app-dev:
+      build:
+          context: .
+          dockerfile: Dockerfile
+          target: development
+      ports:
+          - '3000:3000'
+      volumes:
+          - .:/app # Mount local code for hot-reloading
+          - /app/node_modules
+          - /app/.next
+      env_file:
+          - .env.local
+      networks:
+          - web
+      # environment: # Uncomment if hot-reloading issues persist
+      #   WATCHPACK_POLLING: "true"
+      # CHOKIDAR_USEPOLLING: "true" # Alternative for older Webpack/Chokidar versions
 
-    # Production service configuration
-    app-prod:
-        build:
-            context: .
-            dockerfile: Dockerfile
-            target: production # Target the 'production' stage in Dockerfile
-            # If you need to pass build-time ARGs to the Dockerfile's 'builder' stage:
-            # args:
-            #   NEXT_PUBLIC_MY_VAR: ${YOUR_PRODUCTION_VALUE_FOR_MY_VAR}
-        ports:
-            # You might want to map to a different host port for production, e.g., 80 or 8080
-            - '3000:3000' # Container still runs on 3000 as per EXPOSE and CMD
-        env_file:
-            - .env.production # Load production-specific environment variables
-        # No source code volumes for production; the app is self-contained in the image.
-        # Consider healthchecks for production
-        # healthcheck:
-        #   test: ["CMD", "curl", "-f", "http://localhost:3000/health"] # Assuming you have a /health endpoint
-        #   interval: 30s
-        #   timeout: 10s
-        #   retries: 3
-        profiles:
-            - prod # This service will run only if 'prod' profile is active
+      profiles:
+          - dev
 
-# You might want to define networks or volumes if shared across services or for persistence beyond containers
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    env_file:
+      - .env
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pharmpilot.rule=Host(`localhost`)" # Change to your domain in production
+    # - "traefik.http.routers.pharmpilot.entrypoints=web,websecure" # Uncomment in production
+      # - "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt" # Uncomment in production
+      - "traefik.http.services.pharmpilot.loadbalancer.server.port=3000"
+    profiles:
+      - prod
+
+volumes:
+  letsencrypt:
+
+networks:
+  web:
+    external: false
