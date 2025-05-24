@@ -1,6 +1,6 @@
 # ---- Base Stage ----
 # Common setup for both development and production builds
-FROM node:24-slim AS common_base
+FROM node:23-slim AS common_base
 # Set the working directory in the container
 WORKDIR /app
 
