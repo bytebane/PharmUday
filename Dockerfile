@@ -5,9 +5,9 @@ WORKDIR /app
 
 # Install dependencies
 # (Copy these first to leverage Docker cache for dependencies)
-COPY package.json package-lock.json ./
+COPY package.json ./
 # Install only production dependencies
-RUN npm ci --omit=optional
+RUN npm install
 
 # Copy prisma schema and generate client
 # Adjust the path if your prisma schema is not in ./prisma
@@ -36,7 +36,8 @@ FROM common_base AS builder
 ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=2048
 
-RUN npm run build # This will use the `output: 'standalone'` from next.config.js
+# This will use the `output: 'standalone'` from next.config.js
+RUN npm run build
 
 # ---- Production Stage ----
 # Creates a lean image for running the production application
