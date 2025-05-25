@@ -1,7 +1,6 @@
 # ---- Base Stage ----
 # Common setup for both development and production builds
-FROM node:23-alpine AS common_base
-# Set the working directory in the container
+FROM node:24-slim AS common_base
 WORKDIR /app
 
 # Install dependencies
@@ -35,17 +34,18 @@ CMD ["npm", "run", "dev"]
 # Builds the Next.js application for production
 FROM common_base AS builder
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--max-old-space-size=2048
 
 RUN npm run build # This will use the `output: 'standalone'` from next.config.js
 
 # ---- Production Stage ----
 # Creates a lean image for running the production application
-FROM node:23-alpine AS production
+FROM node:24-slim AS production
 WORKDIR /app
 ENV NODE_ENV=production
 
 # Create a non-root user and group for better security
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN addgroup appgroup && adduser --disabled-password --gecos "" --ingroup appgroup appuser
 
 # Copy only the necessary standalone artifacts from the builder stage
 COPY --from=builder --chown=appuser:appgroup /app/.next/standalone ./
