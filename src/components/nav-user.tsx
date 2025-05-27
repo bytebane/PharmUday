@@ -19,6 +19,10 @@ export function NavUser({
 }) {
 	const { isMobile } = useSidebar()
 
+	const firstLetter = user.name.split(' ')[0][0]
+	const lastLetter = user.name.split(' ')[1] ? user.name.split(' ')[1][0] : ''
+	const initials = `${firstLetter}${lastLetter}`.toUpperCase()
+
 	return (
 		<SidebarMenu>
 			<SidebarMenuItem>
@@ -32,10 +36,10 @@ export function NavUser({
 									src={user.avatar}
 									alt={user.name}
 								/>
-								<AvatarFallback className='rounded-lg'>CN</AvatarFallback>
+								<AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
 							</Avatar>
 							<div className='grid flex-1 text-left text-sm leading-tight'>
-								<span className='truncate font-medium'>{user.name}</span>
+								<span className='truncate font-medium'>{user.name.split(' ')[0]}</span>
 								<span className='truncate text-xs'>{user.email}</span>
 							</div>
 							<ChevronsUpDown className='ml-auto size-4' />
@@ -53,7 +57,7 @@ export function NavUser({
 										src={user.avatar}
 										alt={user.name}
 									/>
-									<AvatarFallback className='rounded-lg'>CN</AvatarFallback>
+									<AvatarFallback className='rounded-lg'>{initials}</AvatarFallback>
 								</Avatar>
 								<div className='grid flex-1 text-left text-sm leading-tight'>
 									<span className='truncate font-medium'>{user.name}</span>

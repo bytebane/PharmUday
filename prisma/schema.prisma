@@ -174,7 +174,7 @@ model Supplier {
 // Model for Items (Products)
 model Item {
   id             String   @id @default(cuid())
-  name           String // Name of the item/drug
+  name           String   @unique // Name of the item/drug
   manufacturer   String? // Manufacturer name
   generic_name   String? // Generic name of the drug
   formulation    String? // e.g., Tablet, Syrup, Capsule, Injection

@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { LayoutDashboard, Box, Moon, Sun, ChevronsUpDown, FileChartColumnIncreasing, FolderKanban, Users as UsersIcon, Loader2, LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Box, Moon, Sun, ChevronsUpDown, FileChartColumnIncreasing, FolderKanban, Users as UsersIcon, Loader2, LucideIcon, LayoutList, Container, SquareChartGantt, BadgeIndianRupee, FileClock, User, ShoppingCart } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Role } from '@/generated/prisma'
 import { NavMain } from '@/components/nav-main'
@@ -14,7 +14,6 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenuButto
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
 import Image from 'next/image'
 
-// This is sample data.
 const data = {
 	stores: [
 		{
@@ -58,15 +57,18 @@ const data = {
 				{
 					title: 'Items',
 					url: '/inventory/items',
+					icon: LayoutList,
 				},
 				{
 					title: 'Categories',
 					url: '/inventory/categories',
+					icon: FolderKanban,
 					requiredRoles: [Role.ADMIN, Role.SUPER_ADMIN, Role.PHARMACIST] as Role[], // Only for Admin and Super Admin
 				},
 				{
 					title: 'Suppliers',
 					url: '/inventory/suppliers',
+					icon: Container,
 					requiredRoles: [Role.ADMIN, Role.SUPER_ADMIN, Role.PHARMACIST] as Role[], // Only for Admin and Super Admin
 				},
 			],
@@ -74,17 +76,18 @@ const data = {
 		{
 			title: 'Reports',
 			url: '#',
-			icon: FolderKanban,
+			icon: SquareChartGantt,
 			isActive: true,
 			items: [
 				{
 					title: 'Reports',
-
+					icon: SquareChartGantt,
 					url: '/reports',
 				},
 				{
 					title: 'Categories',
 					url: '/reports/categories',
+					icon: FolderKanban,
 					requiredRoles: [Role.ADMIN, Role.SUPER_ADMIN, Role.PHARMACIST] as Role[], // Only for Admin and Super Admin
 				},
 			],
@@ -98,14 +101,17 @@ const data = {
 			items: [
 				{
 					title: 'New Sale',
+					icon: BadgeIndianRupee,
 					url: '/sales',
 				},
 				{
 					title: 'Sales History',
+					icon: FileClock,
 					url: '/sales/history',
 				},
 				{
 					title: 'Customers',
+					icon: User,
 					url: '/customers',
 				},
 			],
@@ -119,7 +125,7 @@ const data = {
 		{
 			title: 'My Orders',
 			url: '/orders',
-			icon: UsersIcon,
+			icon: ShoppingCart,
 			requiredRoles: [Role.CUSTOMER] as Role[], // Only for Customer
 		},
 		// {

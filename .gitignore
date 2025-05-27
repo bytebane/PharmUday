@@ -43,3 +43,6 @@ next-env.d.ts
 docker-compose.dev.yml
 
 /src/generated
+
+package-lock.json
+bun.lock

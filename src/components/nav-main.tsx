@@ -25,7 +25,7 @@ export function NavMain({ items }: { items: NavItemProps[] }) {
 						<Collapsible
 							key={item.title}
 							asChild
-							defaultOpen={item.isActive}
+							defaultOpen={true}
 							className='group/collapsible'>
 							<SidebarMenuItem>
 								<CollapsibleTrigger asChild>

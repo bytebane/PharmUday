@@ -1,5 +1,6 @@
 services:
   traefik:
+    container_name: pharmpilot-traefik
     image: traefik:v3.0
     command:
       - "--api.insecure=true" # Remove in production if you don't want the dashboard open
@@ -20,29 +21,8 @@ services:
     networks:
       - web
 
-  app-dev:
-      build:
-          context: .
-          dockerfile: Dockerfile
-          target: development
-      ports:
-          - '3000:3000'
-      volumes:
-          - .:/app # Mount local code for hot-reloading
-          - /app/node_modules
-          - /app/.next
-      env_file:
-          - .env.local
-      networks:
-          - web
-      # environment: # Uncomment if hot-reloading issues persist
-      #   WATCHPACK_POLLING: "true"
-      # CHOKIDAR_USEPOLLING: "true" # Alternative for older Webpack/Chokidar versions
-
-      profiles:
-          - dev
-
-  app-prod:
+  pharmpilot-app:
+    container_name: pharmpilot-app
     build:
       context: .
       dockerfile: Dockerfile
@@ -53,12 +33,10 @@ services:
       - web
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.pharmpilot.rule=Host(`localhost`)" # Change to your domain in production
-    # - "traefik.http.routers.pharmpilot.entrypoints=web,websecure" # Uncomment in production
+      - "traefik.http.routers.pharmpilot.rule=Host(`${TRAEFIK_HOST}`)"
+      # - "traefik.http.routers.pharmpilot.entrypoints=web,websecure" # Uncomment in production
       # - "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt" # Uncomment in production
       - "traefik.http.services.pharmpilot.loadbalancer.server.port=3000"
-    profiles:
-      - prod
 
 volumes:
   letsencrypt:

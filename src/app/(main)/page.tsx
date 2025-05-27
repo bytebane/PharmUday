@@ -118,7 +118,7 @@ export default async function DashboardPage() {
 	if (userRole === Role.CUSTOMER) {
 		return (
 			<div className='container mx-auto p-4 md:p-8'>
-				<h1 className='mb-6 text-3xl font-bold'>Welcome, {currentUser?.name || 'Customer'}!</h1>
+				<h1 className='mb-6 text-3xl font-bold'>Welcome, {currentUser?.name.split(' ')[0] || 'Customer'}!</h1>
 				<div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
 					{/* Customer-specific cards */}
 					<StatCard
