@@ -67,7 +67,7 @@ services:
       POSTGRES_HOST_AUTH_METHOD: trust
     command: >
       bash -c "
-        until pg_basebackup -h db-master -D /var/lib/postgresql/data/pgdata -U ${DB_ADMIN_EMAIL} -vP -W; do
+        until pg_basebackup -h db-master -D /var/lib/postgresql/data/pgdata -U ${PG_ADMIN_EMAIL} -vP -W; do
           sleep 1;
         done &&
         postgres
