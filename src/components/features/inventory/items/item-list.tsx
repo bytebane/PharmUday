@@ -7,7 +7,7 @@ import { Role } from '@/generated/prisma'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Edit, Trash2, MoreHorizontal, ArrowUpDown } from 'lucide-react'
+import { Edit, Trash2, MoreHorizontal, ArrowUpDown, Loader2 } from 'lucide-react' // Spinner icon
 import { toast } from 'sonner'
 import { ItemForm } from './item-form'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { AddFAB } from '@/components/AddFAB'
 import { useSearchParams } from 'next/navigation'
+import * as XLSX from 'xlsx'
 
 const itemQueryKeys = {
 	all: ['items'] as const,
@@ -52,6 +53,8 @@ export function ItemList() {
 	const [filters, setFilters] = useState<{ status?: string; categoryId?: string; supplierId?: string; search?: string }>(() => ({
 		status: urlFilter ?? undefined,
 	}))
+	const [isImporting, setIsImporting] = useState(false)
+	const [isExporting, setIsExporting] = useState(false)
 
 	// Data fetching
 	const {
@@ -113,6 +116,54 @@ export function ItemList() {
 		setIsSheetOpen(false)
 		setEditingItem(null)
 	}, [])
+
+	const handleExport = async () => {
+		setIsExporting(true)
+		try {
+			const res = await fetch('/api/inv-items/xlsx', {
+				method: 'GET',
+				headers: { 'Content-Type': 'application/json' },
+			})
+			const data = await res.json()
+			const allItems = data.items ?? []
+
+			// Optionally, map/flatten relations for Excel
+			const exportData = allItems.map((item: any) => ({
+				...item,
+				categories: item.categories?.map((c: any) => c.name).join(', '),
+				supplier: item.supplier?.name || '',
+			}))
+
+			const ws = XLSX.utils.json_to_sheet(exportData)
+			const wb = XLSX.utils.book_new()
+			const filename = `meds_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}_${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/:/g, '-')}.xlsx`
+			XLSX.utils.book_append_sheet(wb, ws, 'Items')
+			XLSX.writeFile(wb, filename)
+		} finally {
+			setIsExporting(false)
+		}
+	}
+
+	const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0]
+		if (!file) return
+		setIsImporting(true)
+		try {
+			const data = await file.arrayBuffer()
+			const workbook = XLSX.read(data)
+			const sheet = workbook.Sheets[workbook.SheetNames[0]]
+			const json: any[] = XLSX.utils.sheet_to_json(sheet)
+			await fetch('/api/inv-items/xlsx', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ items: json }),
+			})
+			// Optionally: refresh items list
+			queryClient.invalidateQueries({ queryKey: ['items', 'list'] })
+		} finally {
+			setIsImporting(false)
+		}
+	}
 
 	// Table columns
 	const globalFilterFn: FilterFn<ItemWithRelations> = useCallback((row, _columnId, filterValue) => {
@@ -304,6 +355,77 @@ export function ItemList() {
 		<div className='w-full'>
 			{/* Filter/search controls */}
 			<div className='mb-4 flex flex-wrap items-center gap-2 rounded-md border p-4'>
+				<Button
+					asChild
+					className='ml-2'
+					disabled={isImporting}>
+					<label>
+						{isImporting ? (
+							<>
+								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+								Importing...
+							</>
+						) : (
+							<>Import from Excel</>
+						)}
+						<input
+							type='file'
+							accept='.xlsx,.xls'
+							onChange={handleImport}
+							style={{ display: 'none' }}
+							disabled={isImporting}
+						/>
+					</label>
+				</Button>
+				<Button
+					onClick={handleExport}
+					className='ml-2'
+					disabled={isExporting}>
+					{isExporting ? (
+						<>
+							<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+							Exporting...
+						</>
+					) : (
+						<>Export to Excel</>
+					)}
+				</Button>
+				<Button
+					onClick={() => {
+						// Define the columns you want in the template
+						const templateData = [
+							{
+								name: '',
+								manufacturer: '',
+								generic_name: '',
+								formulation: '',
+								strength: '',
+								unit: '',
+								schedule: '',
+								description: '',
+								units_per_pack: '',
+								price: '',
+								tax_rate: '',
+								discount: '',
+								reorder_level: '',
+								isActive: '',
+								isAvailable: '',
+								quantity_in_stock: '',
+								expiry_date: '',
+								purchase_date: '',
+								supplierId: '',
+								// Add/remove fields as needed
+							},
+						]
+						const ws = XLSX.utils.json_to_sheet(templateData)
+						const wb = XLSX.utils.book_new()
+						XLSX.utils.book_append_sheet(wb, ws, 'Template')
+						XLSX.writeFile(wb, 'meds-import-template.xlsx')
+					}}
+					className='ml-2'
+					variant='outline'>
+					Download Excel Template
+				</Button>
 				{/* Search input */}
 				{isLoadingRelated ? (
 					<Skeleton className='h-10 w-[180px]' />
