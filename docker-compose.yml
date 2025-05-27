@@ -38,9 +38,73 @@ services:
       # - "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt" # Uncomment in production
       - "traefik.http.services.pharmpilot.loadbalancer.server.port=3000"
 
+  db-master:
+    image: postgres:16
+    container_name: pharmpilot-db-master
+    restart: always
+    environment:
+      POSTGRES_DB: ${PG_DATABASE_NAME}
+      POSTGRES_USER: ${PG_ADMIN_EMAIL}
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - db_master_data:/var/lib/postgresql/data
+    networks:
+      - db_net
+    expose:
+      - "5432"
+
+  db-replica:
+    image: postgres:16
+    container_name: pharmpilot-db-replica
+    restart: always
+    environment:
+      POSTGRES_DB: ${PG_DATABASE_NAME}
+      POSTGRES_USER: ${PG_ADMIN_EMAIL}
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # Replication settings
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: >
+      bash -c "
+        until pg_basebackup -h db-master -D /var/lib/postgresql/data/pgdata -U ${DB_ADMIN_EMAIL} -vP -W; do
+          sleep 1;
+        done &&
+        postgres
+      "
+    depends_on:
+      - db-master
+    networks:
+      - db_net
+    expose:
+      - "5432"
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pharmpilot-pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "True"
+      PGADMIN_CONFIG_LOGIN_BANNER: "Authorized access only."
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "10"
+    ports:
+      - "${PGADMIN_PORT:-5050}:5050"
+    depends_on:
+      - db-master
+    networks:
+      - db_net
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
 volumes:
   letsencrypt:
+  db_master_data:
+  pgadmin_data:
 
 networks:
   web:
+    external: false
+  db_net:
     external: false
