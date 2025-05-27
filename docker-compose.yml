@@ -33,7 +33,7 @@ services:
       - web
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.pharmpilot.rule=Host(`${TRAEFIK_HOST}`)"
+      - "traefik.http.routers.pharmpilot.rule=Host(`localhost`)" # Change to your domain in production
       # - "traefik.http.routers.pharmpilot.entrypoints=web,websecure" # Uncomment in production
       # - "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt" # Uncomment in production
       - "traefik.http.services.pharmpilot.loadbalancer.server.port=3000"
