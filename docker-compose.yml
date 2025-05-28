@@ -2,6 +2,7 @@ services:
   traefik:
     container_name: pharmpilot-traefik
     image: traefik:v3.0
+    restart: always
     command:
       - "--api.insecure=true" # Remove in production if you don't want the dashboard open
       - "--providers.docker=true"
@@ -20,6 +21,7 @@ services:
       - "letsencrypt:/letsencrypt"
     networks:
       - web
+      - db_net
 
   pharmpilot-app:
     container_name: pharmpilot-app
@@ -27,10 +29,12 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
+    restart: always
     env_file:
       - .env
     networks:
       - web
+      - db_net
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.pharmpilot.rule=Host(`localhost`)" # Change to your domain in production
@@ -38,69 +42,41 @@ services:
       # - "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt" # Uncomment in production
       - "traefik.http.services.pharmpilot.loadbalancer.server.port=3000"
 
-  db-master:
+  db-postgres:
     image: postgres:16
-    container_name: pharmpilot-db-master
+    container_name: pharmpilot-db
     restart: always
     environment:
-      POSTGRES_DB: ${PG_DATABASE_NAME}
-      POSTGRES_USER: ${PG_ADMIN_EMAIL}
-      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD}
+      POSTGRES_DB: ${POSTY_DB_NAME}
+      POSTGRES_USER: ${POSTY_EMAIL}
+      POSTGRES_PASSWORD: ${POSTY_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - db_master_data:/var/lib/postgresql/data
+      - posty_data:/var/lib/postgresql/data
     networks:
       - db_net
-    expose:
-      - "5432"
-
-  db-replica:
-    image: postgres:16
-    container_name: pharmpilot-db-replica
-    restart: always
-    environment:
-      POSTGRES_DB: ${PG_DATABASE_NAME}
-      POSTGRES_USER: ${PG_ADMIN_EMAIL}
-      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD}
-      PGDATA: /var/lib/postgresql/data/pgdata
-      # Replication settings
-      POSTGRES_HOST_AUTH_METHOD: trust
-    command: >
-      bash -c "
-        until pg_basebackup -h db-master -D /var/lib/postgresql/data/pgdata -U ${PG_ADMIN_EMAIL} -vP -W; do
-          sleep 1;
-        done &&
-        postgres
-      "
-    depends_on:
-      - db-master
-    networks:
-      - db_net
-    expose:
-      - "5432"
+    ports:
+      - "5432:5432"
 
   pgadmin:
     image: dpage/pgadmin4
     container_name: pharmpilot-pgadmin
     restart: always
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "True"
-      PGADMIN_CONFIG_LOGIN_BANNER: "Authorized access only."
-      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "10"
-    ports:
-      - "${PGADMIN_PORT:-5050}:5050"
-    depends_on:
-      - db-master
-    networks:
-      - db_net
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     volumes:
       - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - db_net
+    depends_on:
+      - db-postgres
+    ports:
+      - "5050:80"
 
 volumes:
   letsencrypt:
-  db_master_data:
+  posty_data:
   pgadmin_data:
 
 networks:
