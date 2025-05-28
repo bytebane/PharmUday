@@ -1,0 +1,60 @@
+name: Deploy to DigitalOcean Droplet
+
+on:
+    push:
+        branches: [main]
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+
+        env:
+            PROD_DOMAIN: ${{ secrets.PROD_DOMAIN }}
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up SSH
+              uses: webfactory/ssh-agent@v0.9.0
+              with:
+                  ssh-private-key: ${{ secrets.DO_SSH_KEY }}
+
+            - name: Prepare docker-compose for production
+              run: |
+                  sed -i "s/Host(\`localhost\`)/Host(\`${PROD_DOMAIN}\`)/" docker-compose.yml
+                  sed -i 's/# - "traefik.http.routers.pharmpilot.entrypoints=web,websecure"/- "traefik.http.routers.pharmpilot.entrypoints=web,websecure"/' docker-compose.yml
+                  sed -i 's/# - "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt"/- "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt"/' docker-compose.yml
+              #   Optionally, remove the Traefik dashboard in production
+              #   sed -i '/--api.insecure=true/d' docker-compose.yml
+
+            - name: Create .env file for production
+              run: |
+                  cat <<EOF > .env
+                  NODE_ENV=production
+                  NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
+                  NEXTAUTH_URL=https://${{ secrets.PROD_DOMAIN }}
+                  BLOB_READ_WRITE_TOKEN=${{ secrets.BLOB_READ_WRITE_TOKEN }}
+                  SUPER_ADMIN_NAME=${{ secrets.SUPER_ADMIN_NAME }}
+                  SUPER_ADMIN_EMAIL=${{ secrets.SUPER_ADMIN_EMAIL }}
+                  SUPER_ADMIN_PASSWORD=${{ secrets.SUPER_ADMIN_PASSWORD }}
+                  POSTY_EMAIL=${{ secrets.POSTY_EMAIL }}
+                  POSTY_PASSWORD=${{ secrets.POSTY_PASSWORD }}
+                  POSTY_DB_NAME=${{ secrets.POSTY_DB_NAME }}
+                  PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}
+                  PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}
+                  PGADMIN_PORT=5050
+                  DATABASE_URL=${{ secrets.DATABASE_URL }}
+                  EOF
+
+            - name: Copy files to Droplet
+              run: |
+                  rsync -avz --exclude='.git*' --exclude='node_modules' -e "ssh -o StrictHostKeyChecking=no" ./ root@${{ secrets.DO_DROPLET_IP }}:/root/pharmpilot
+
+            - name: Deploy with Docker Compose
+              run: |
+                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+                    cd /root/pharmpilot
+                    docker compose pull
+                    docker compose up -d --build
+                  EOF
