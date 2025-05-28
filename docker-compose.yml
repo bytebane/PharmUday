@@ -10,7 +10,7 @@ services:
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.letsencrypt.acme.email=sandbox@reniyal.dev"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ADMIN_EMAIL}" # Change to your email
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
     ports:
       - "80:80"
@@ -48,7 +48,7 @@ services:
     restart: always
     environment:
       POSTGRES_DB: ${POSTY_DB_NAME}
-      POSTGRES_USER: ${POSTY_EMAIL}
+      POSTGRES_USER: ${ADMIN_EMAIL}
       POSTGRES_PASSWORD: ${POSTY_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
@@ -63,7 +63,7 @@ services:
     container_name: pharmpilot-pgadmin
     restart: always
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_EMAIL: ${ADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     volumes:
       - pgadmin_data:/var/lib/pgadmin
