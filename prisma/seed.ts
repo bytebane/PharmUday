@@ -5,14 +5,14 @@ import { categoriesData, itemsData, reportCategoriesData, suppliersData } from '
 const prisma = new PrismaClient()
 
 async function main() {
-	console.log('Start seeding ...')
+	console.log('Started seeding ...')
 
 	// --- Seed Super Admin ---
 	const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'superadmin@example.com'
-	const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'superStrongPass123!' // CHANGE THIS IN .env
-	const superAdminName = 'Super Administrator'
+	const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'superStrongPass123!'
+	const superAdminName = process.env.SUPER_ADMIN_NAME || 'Super Administrator'
 
-	if (!process.env.SUPER_ADMIN_EMAIL || !process.env.SUPER_ADMIN_PASSWORD) {
+	if (!process.env.SUPER_ADMIN_EMAIL || !process.env.SUPER_ADMIN_PASSWORD || !process.env.SUPER_ADMIN_NAME) {
 		console.warn('Warning: SUPER_ADMIN_EMAIL and/or SUPER_ADMIN_PASSWORD not set in .env. Using default credentials for seeding. PLEASE CHANGE THESE FOR PRODUCTION.')
 	}
 
@@ -40,8 +40,12 @@ async function main() {
 		superAdminId = existingSuperAdmin.id
 	}
 
-	// --- Seed Suppliers ---
 	const suppliers = []
+	const categories = []
+
+	// --- Seed Suppliers ---
+
+	console.log('Seeding suppliers...')
 	for (const s of suppliersData) {
 		const supplier = await prisma.supplier.upsert({
 			where: { email: s.email },
@@ -53,7 +57,7 @@ async function main() {
 
 	// --- Seed Categories ---
 
-	const categories = []
+	console.log('Seeding categories...')
 	for (const c of categoriesData) {
 		const category = await prisma.category.upsert({
 			where: { name: c.name },
@@ -65,6 +69,7 @@ async function main() {
 
 	// --- Seed Report Categories ---
 
+	console.log('Seeding report categories...')
 	for (const rc of reportCategoriesData) {
 		await prisma.reportCategory.upsert({
 			where: { name: rc.name },
@@ -73,6 +78,9 @@ async function main() {
 		})
 	}
 
+	// --- Seed Items ---
+
+	console.log('Seeding items...')
 	for (const item of itemsData) {
 		const supplier = suppliers.find(s => s.name === item.supplierName)
 		const categoryIds = categories.filter(c => item.categoryNames.includes(c.name)).map(c => ({ id: c.id }))
@@ -103,7 +111,6 @@ async function main() {
 			},
 		})
 	}
-
 	console.log('Seeding finished.')
 }
 
