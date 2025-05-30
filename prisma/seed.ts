@@ -8,19 +8,18 @@ async function main() {
 	console.log('Started seeding ...')
 
 	// --- Seed Super Admin ---
-	const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'superadmin@example.com'
-	const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'superStrongPass123!'
-	const superAdminName = process.env.SUPER_ADMIN_NAME || 'Super Administrator'
+	const superAdminEmail = process.env.APP_SUPER_ADMIN_EMAIL || 'superadmin@example.com'
+	const superAdminPassword = process.env.APP_SUPER_ADMIN_PASSWORD || 'superStrongPass123!'
+	const superAdminName = process.env.APP_SUPER_ADMIN_NAME || 'Super Administrator'
 
-	if (!process.env.SUPER_ADMIN_EMAIL || !process.env.SUPER_ADMIN_PASSWORD || !process.env.SUPER_ADMIN_NAME) {
-		console.warn('Warning: SUPER_ADMIN_EMAIL and/or SUPER_ADMIN_PASSWORD not set in .env. Using default credentials for seeding. PLEASE CHANGE THESE FOR PRODUCTION.')
+	if (!process.env.APP_SUPER_ADMIN_EMAIL || !process.env.APP_SUPER_ADMIN_PASSWORD || !process.env.APP_SUPER_ADMIN_NAME) {
+		console.warn('Warning: Kindly add APP_SUPER_ADMIN_EMAIL, APP_SUPER_ADMIN_PASSWORD, and APP_SUPER_ADMIN_NAME for seeding. Using default credentials for seeding. PLEASE CHANGE THESE FOR PRODUCTION.')
 	}
 
 	const existingSuperAdmin = await prisma.user.findUnique({
 		where: { email: superAdminEmail },
 	})
 
-	let superAdminId: string
 	if (!existingSuperAdmin) {
 		const hashedSuperAdminPassword = await bcrypt.hash(superAdminPassword, 10)
 		const superAdmin = await prisma.user.create({
@@ -34,10 +33,58 @@ async function main() {
 			},
 		})
 		console.log(`Super Admin "${superAdminName}" created with email ${superAdminEmail}`)
-		superAdminId = superAdmin.id
 	} else {
 		console.log(`Super Admin with email ${superAdminEmail} already exists.`)
-		superAdminId = existingSuperAdmin.id
+	}
+
+	// --- Seed Admin ---
+	const adminEmail = process.env.APP_ADMIN_EMAIL || 'admin@pharmpilot.local'
+	const adminPassword = process.env.APP_ADMIN_PASSWORD || 'admin1234'
+	const adminName = process.env.APP_ADMIN_NAME || 'Admin User'
+	if (!process.env.APP_ADMIN_EMAIL || !process.env.APP_ADMIN_PASSWORD || !process.env.APP_ADMIN_NAME) {
+		console.warn('Warning: Kindly add APP_ADMIN_EMAIL, APP_ADMIN_PASSWORD, and APP_ADMIN_NAME for seeding. Using default credentials for seeding. PLEASE CHANGE THESE FOR PRODUCTION.')
+	}
+	const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } })
+	if (!existingAdmin) {
+		const hashedAdminPassword = await bcrypt.hash(adminPassword, 10)
+		await prisma.user.create({
+			data: {
+				email: adminEmail,
+				name: adminName,
+				passwordHash: hashedAdminPassword,
+				role: Role.ADMIN,
+				isActive: true,
+				emailVerified: new Date(),
+			},
+		})
+		console.log(`Admin user created with email ${adminEmail}`)
+	} else {
+		console.log(`Admin user with email ${adminEmail} already exists.`)
+	}
+
+	// --- Seed Customer ---
+	const customerEmail = process.env.APP_CUSTOMER_EMAIL || 'customer@pharmpilot.local'
+	const customerPassword = process.env.APP_CUSTOMER_PASSWORD || 'customer1234'
+	const customerName = process.env.APP_CUSTOMER_NAME || 'Customer User'
+	if (!process.env.APP_CUSTOMER_EMAIL || !process.env.APP_CUSTOMER_PASSWORD || !process.env.APP_CUSTOMER_NAME) {
+		console.warn('Warning: Kindly add APP_CUSTOMER_EMAIL, APP_CUSTOMER_PASSWORD, and APP_CUSTOMER_NAME for seeding. Using default credentials for seeding. PLEASE CHANGE THESE FOR PRODUCTION.')
+	}
+	const existingCustomer = await prisma.user.findUnique({ where: { email: customerEmail } })
+	if (!existingCustomer) {
+		const hashedCustomerPassword = await bcrypt.hash(customerPassword, 10)
+		await prisma.user.create({
+			data: {
+				email: customerEmail,
+				name: customerName,
+				passwordHash: hashedCustomerPassword,
+				role: Role.CUSTOMER,
+				isActive: true,
+				emailVerified: new Date(),
+			},
+		})
+		console.log(`Customer user created with email ${customerEmail}`)
+	} else {
+		console.log(`Customer user with email ${customerEmail} already exists.`)
 	}
 
 	const suppliers = []

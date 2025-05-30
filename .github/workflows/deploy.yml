@@ -36,15 +36,20 @@ jobs:
                   NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
                   NEXTAUTH_URL=https://${{ secrets.PROD_DOMAIN }}
                   BLOB_READ_WRITE_TOKEN=${{ secrets.BLOB_READ_WRITE_TOKEN }}
-                  SUPER_ADMIN_NAME=${{ secrets.SUPER_ADMIN_NAME }}
-                  SUPER_ADMIN_EMAIL=${{ secrets.SUPER_ADMIN_EMAIL }}
-                  SUPER_ADMIN_PASSWORD=${{ secrets.SUPER_ADMIN_PASSWORD }}
-                  POSTY_EMAIL=${{ secrets.POSTY_EMAIL }}
+                  APP_SUPER_ADMIN_NAME=${{ secrets.APP_SUPER_ADMIN_NAME }}
+                  APP_SUPER_ADMIN_EMAIL=${{ secrets.APP_SUPER_ADMIN_EMAIL }}
+                  APP_SUPER_ADMIN_PASSWORD=${{ secrets.APP_SUPER_ADMIN_PASSWORD }}
+                  APP_ADMIN_NAME=${{secrets.APP_ADMIN_NAME}}
+                  APP_ADMIN_EMAIL=${{ secrets.APP_ADMIN_EMAIL }}
+                  APP_ADMIN_PASSWORD=${{ secrets.APP_ADMIN_PASSWORD }}
+                  APP_CUSTOMER_NAME=${{ secrets.APP_CUSTOMER_NAME }}
+                  APP_CUSTOMER_EMAIL=${{ secrets.APP_CUSTOMER_EMAIL }}
+                  APP_CUSTOMER_PASSWORD=${{ secrets.APP_CUSTOMER_PASSWORD }}
+
+                  ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
                   POSTY_PASSWORD=${{ secrets.POSTY_PASSWORD }}
                   POSTY_DB_NAME=${{ secrets.POSTY_DB_NAME }}
-                  PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}
                   PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}
-                  PGADMIN_PORT=5050
                   DATABASE_URL=${{ secrets.DATABASE_URL }}
                   EOF
 
@@ -58,4 +63,24 @@ jobs:
                     cd /root/pharmpilot
                     docker compose pull
                     docker compose up -d --build
+                  EOF
+
+            - name: Push & Seed the database
+              run: |
+                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+                    cd /root/pharmpilot
+                    docker compose exec pharmpilot-app npx prisma db push
+                    docker compose exec pharmpilot-app npx prisma db seed
+                  EOF
+            - name: Notify deployment success
+              run: echo "Deployment to DigitalOcean Droplet successful!"
+            - name: Notify deployment failure
+              if: failure()
+              run: echo "Deployment to DigitalOcean Droplet failed!"
+            - name: Post-deployment cleanup
+              if: always()
+              run: |
+                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+                    docker system prune -f
+                    docker volume prune -f
                   EOF
