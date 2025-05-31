@@ -12,6 +12,7 @@ import { Customer as PrismaCustomer } from '@/generated/prisma'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PhoneInput } from '@/components/ui/phone-input'
 import { Textarea } from '@/components/ui/textarea'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 
@@ -126,9 +127,8 @@ export function CustomerForm({ customerData, onSuccess }: CustomerFormProps) {
 						<FormItem>
 							<FormLabel>Phone</FormLabel>
 							<FormControl>
-								<Input
-									type='tel'
-									placeholder='(555) 123-4567'
+								<PhoneInput
+									placeholder='Enter 10-digit mobile number'
 									{...field}
 									value={field.value ?? ''}
 								/>

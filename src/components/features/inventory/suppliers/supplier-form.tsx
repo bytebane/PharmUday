@@ -12,6 +12,7 @@ import { Supplier as PrismaSupplier } from '@/generated/prisma'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PhoneInput } from '@/components/ui/phone-input'
 import { Textarea } from '@/components/ui/textarea' // If using address field
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 
@@ -146,9 +147,8 @@ export function SupplierForm({ supplierData, onSuccess }: SupplierFormProps) {
 						<FormItem>
 							<FormLabel>Phone</FormLabel>
 							<FormControl>
-								<Input
-									type='tel'
-									placeholder='e.g., 555-123-4567'
+								<PhoneInput
+									placeholder='Enter 10-digit mobile number'
 									{...field}
 									value={field.value ?? ''}
 								/>
