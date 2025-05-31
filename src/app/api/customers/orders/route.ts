@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
+import { authorize } from '@/lib/utils/auth-utils'
 
 export async function GET(req: NextRequest) {
 	try {
-		const user = await getCurrentUser()
-		if (!user || user.role !== Role.CUSTOMER) {
-			return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
-		}
+		const { user, response } = await authorize([Role.CUSTOMER])
+		if (response) return response
 
 		// Find the Customer record for this user
-		const customer = await db.customer.findUnique({ where: { userId: user.id } })
+		const customer = await db.customer.findUnique({ where: { userId: user!.id } })
 		if (!customer) {
 			return NextResponse.json({ sales: [], total: 0 })
 		}

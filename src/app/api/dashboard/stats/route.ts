@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db' // Your Prisma client
-import { getCurrentUser } from '@/lib/auth' // Your authentication helper
+
 import { Role } from '@/generated/prisma' // Your Role enum
 import { getTodayRange, getThisMonthRange, getThisYearRange } from '@/lib/utils/date-utils' // Import date utils
+import { authorize } from '@/lib/utils/auth-utils'
 
 // Define the expected structure for the stats, matching your frontend DashboardStats interface
 interface DashboardStats {
@@ -22,10 +23,8 @@ interface DashboardStats {
 
 export async function GET() {
 	try {
-		const user = await getCurrentUser()
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
 		const todayRange = getTodayRange()
 		const thisMonthRange = getThisMonthRange()

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
 import { saleCreateSchema } from '@/lib/validations/sale'
 import { Prisma } from '@/generated/prisma' // Import Prisma for types
+import { esClient } from '@/lib/elastic'
+import { ElasticIndex } from '@/types/common'
+import { authorize } from '@/lib/utils/auth-utils'
 
 const paginationSchema = z.object({
 	page: z.coerce.number().min(1).default(1),
@@ -41,30 +43,67 @@ export async function GET(req: Request) {
 		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
 		const { page, limit, search, period } = params
 
-		const where: any = {}
+		// Determine if this is a plain 'all sales' query (no filters, no search)
+		const isAllSales = !search && (!period || period === 'all_time')
 
-		if (search) {
-			where.OR = [{ invoice: { id: { contains: search, mode: 'insensitive' } } }, { customer: { name: { contains: search, mode: 'insensitive' } } }, { staff: { email: { contains: search, mode: 'insensitive' } } }]
+		let sales, total
+
+		if (!isAllSales) {
+			// Use Elasticsearch for any filter or search
+			const must: object[] = []
+			const filter: object[] = []
+
+			// Text search
+			if (search) {
+				const wildcardSearch = `*${search.toLowerCase()}*`
+				must.push({
+					query_string: {
+						query: `invoice.id:${wildcardSearch} OR customer.name:${wildcardSearch} OR staff.email:${wildcardSearch}`,
+						fields: ['invoice.id', 'customer.name', 'staff.email'],
+						analyze_wildcard: true,
+						default_operator: 'OR',
+					},
+				})
+			}
+
+			// Period filter
+			if (period && period !== 'all_time') {
+				const range = getPeriodRange(period)
+				if (range) {
+					filter.push({ range: { saleDate: { gte: range.gte.toISOString(), lt: range.lt.toISOString() } } })
+				}
+			}
+
+			const esQuery = { bool: {} as any }
+			if (must.length > 0) esQuery.bool.must = must
+			if (filter.length > 0) esQuery.bool.filter = filter
+
+			const esResult = await esClient.search({
+				index: ElasticIndex.SALES,
+				from: (page - 1) * limit,
+				size: limit,
+				query: esQuery,
+			})
+
+			const hits = esResult.hits.hits
+			sales = hits.map(hit => hit._source)
+			total = typeof esResult.hits.total === 'object' ? esResult.hits.total.value : esResult.hits.total
+		} else {
+			// Use DB for all sales (no filters, no search)
+			;[sales, total] = await Promise.all([
+				db.sale.findMany({
+					include: {
+						invoice: true,
+						customer: true,
+						staff: true,
+					},
+					orderBy: { saleDate: 'desc' },
+					skip: (page - 1) * limit,
+					take: limit,
+				}),
+				db.sale.count(),
+			])
 		}
-
-		if (period && period !== 'all_time') {
-			where.saleDate = getPeriodRange(period)
-		}
-
-		const [sales, total] = await Promise.all([
-			db.sale.findMany({
-				where,
-				include: {
-					invoice: true,
-					customer: true,
-					staff: true,
-				},
-				orderBy: { saleDate: 'desc' },
-				skip: (page - 1) * limit,
-				take: limit,
-			}),
-			db.sale.count({ where }),
-		])
 
 		return NextResponse.json({ sales, total })
 	} catch (error) {
@@ -75,10 +114,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: NextRequest) {
 	try {
-		const user = await getCurrentUser()
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { user, response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
 		const json = await req.json()
 		const body = saleCreateSchema.parse(json)
@@ -126,7 +163,7 @@ export async function POST(req: NextRequest) {
 			console.log('Inside transaction, prisma object:', prisma ? Object.keys(prisma) : null)
 			const newSale = await prisma.sale.create({
 				data: {
-					staffId: user.id,
+					staffId: user!.id,
 					customerId: body.customerId,
 					subTotal: subTotal, // This subTotal is actually the sum of line item totals
 					totalDiscount: body.totalDiscount || 0,
@@ -163,6 +200,15 @@ export async function POST(req: NextRequest) {
 			})
 
 			return newSale // Return the created sale with its items
+		})
+
+		// Index the sale in Elasticsearch
+		await esClient.index({
+			index: ElasticIndex.SALES,
+			id: result.id,
+			document: {
+				...result,
+			},
 		})
 
 		return NextResponse.json(result, { status: 201 })

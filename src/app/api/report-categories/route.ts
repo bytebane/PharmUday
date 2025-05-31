@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { reportCategorySchema } from '@/lib/validations/report-category'
-import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
+import { authorize } from '@/lib/utils/auth-utils'
 
 const paginationSchema = z.object({
 	page: z.coerce.number().min(1).default(1),
@@ -41,11 +41,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
 	try {
-		const user = await getCurrentUser()
-		// Adjust roles as necessary for who can create report categories
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
 		const json = await req.json()
 		const body = reportCategorySchema.parse(json)

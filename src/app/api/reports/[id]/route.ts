@@ -8,6 +8,7 @@ import { del } from '@vercel/blob' // Import Vercel Blob SDK for deletion
 import { put } from '@vercel/blob' // Import Vercel Blob SDK for upload
 import { nanoid } from 'nanoid' // For unique filenames
 import { parseFormData } from '@/lib/utils/formData-utils'
+import { authorize } from '@/lib/utils/auth-utils'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
@@ -36,8 +37,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
-		const user = await getCurrentUser()
-		if (!user) return new NextResponse('Unauthorized', { status: 401 })
+		const { user, response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
 		const { id } = await params
 		const reportToUpdate = await db.report.findUnique({ where: { id } })
@@ -110,9 +111,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
 		if (!reportToDelete) return new NextResponse('Report not found', { status: 404 })
 
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
 		// Delete the file from Vercel Blob storage
 		if (reportToDelete.fileUrl) {

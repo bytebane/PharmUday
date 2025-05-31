@@ -11,8 +11,8 @@ import { ItemWithRelations } from '@/types/inventory'
 import { Customer as PrismaCustomer, PaymentMethod } from '@/generated/prisma'
 import { saleCreateSchema, SaleCreateFormValues, SaleItemFormValues } from '@/lib/validations/sale'
 
-import { fetchAllCustomerNames_cli, fetchCustomerById_cli, fetchCustomers_cli } from '@/services/customerService'
-import { fetchAllItemNames_cli, fetchItemById_cli, fetchItems_cli } from '@/services/inventoryService'
+import { fetchCustomers_cli } from '@/services/customerService'
+import { fetchItems_cli } from '@/services/inventoryService'
 import { createSaleAPI } from '@/services/saleService'
 
 import { Button } from '@/components/ui/button'
@@ -60,20 +60,9 @@ function getCustomerDisplayName(customer: { name: string; phone?: string | null;
 }
 
 // Utility: Render item display name
-function getItemDisplayName(item: { name: string; generic_name?: string | null }) {
-	return item.generic_name ? `${item.name} (${item.generic_name})` : item.name
-}
-
-// Utility: Filter customers by search term
-function filterCustomers(customers: { name: string; phone?: string | null; email?: string | null }[], term: string) {
-	const lowerTerm = term.toLowerCase()
-	return customers.filter(c => c.name.toLowerCase().includes(lowerTerm) || (c.phone && c.phone.includes(term)) || (c.email && c.email.toLowerCase().includes(lowerTerm)))
-}
-
-// Utility: Filter items by search term
-function filterItems(items: { name: string; generic_name?: string | null }[], term: string) {
-	const lowerTerm = term.toLowerCase()
-	return items.filter(item => item.name.toLowerCase().includes(lowerTerm) || (item.generic_name && item.generic_name.toLowerCase().includes(lowerTerm)))
+function getItemDisplayName(item: { name: string; price: number; expiry_date?: Date | null }) {
+	// return item.generic_name ? `${item.name} (${item.generic_name})` : item.name
+	return `${item.name} - ₹${item.price.toFixed(2)} ${item.expiry_date ? `(Exp: ${new Date(item.expiry_date).toLocaleDateString()})` : ''}`
 }
 
 export function NewSaleForm() {
@@ -94,18 +83,6 @@ export function NewSaleForm() {
 			totalDiscount: 0, // This will now be extra discount percentage (e.g. 0.05 for 5%)
 			notes: '',
 		},
-	})
-
-	const { data: allCustomerNames = [] } = useQuery({
-		queryKey: ['all-customer-names'],
-		queryFn: fetchAllCustomerNames_cli,
-		staleTime: 1000 * 60 * 10,
-	})
-
-	const { data: allItemNames = [] } = useQuery({
-		queryKey: ['all-item-names'],
-		queryFn: fetchAllItemNames_cli,
-		staleTime: 1000 * 60 * 10,
 	})
 
 	const { data: liveCustomerResults = [], isLoading: customerSearchLoading } = useQuery({
@@ -247,21 +224,17 @@ export function NewSaleForm() {
 	)
 
 	const handleSelectCustomer = useCallback(
-		async (customerId: string) => {
-			const customer = await fetchCustomerById_cli(customerId)
-			if (customer) {
-				form.setValue('customerId', customer.id)
-				setSelectedCustomerName(getCustomerDisplayName(customer))
-				setCustomerSearchTerm('')
-			}
+		(customer: PrismaCustomer) => {
+			form.setValue('customerId', customer.id)
+			setSelectedCustomerName(getCustomerDisplayName(customer))
+			setCustomerSearchTerm('')
 		},
 		[form],
 	)
 
 	const handleSelectItem = useCallback(
-		async (itemId: string) => {
-			const item = await fetchItemById_cli(itemId)
-			if (item) addItemToSale(item)
+		(item: ItemWithRelations) => {
+			addItemToSale(item)
 			setSearchTerm('')
 		},
 		[addItemToSale],
@@ -277,10 +250,6 @@ export function NewSaleForm() {
 		},
 		[form, queryClient],
 	)
-
-	const filteredCustomerNames = useMemo(() => (customerSearchTerm ? filterCustomers(allCustomerNames, customerSearchTerm) : []), [customerSearchTerm, allCustomerNames])
-
-	const filteredItemNames = useMemo(() => (searchTerm ? filterItems(allItemNames, searchTerm) : []), [searchTerm, allItemNames])
 
 	const handleCompleteOnly = useCallback(() => {
 		setRedirectToInvoice(false)
@@ -312,53 +281,40 @@ export function NewSaleForm() {
 					/>
 					{customerSearchTerm && (
 						<div className='border rounded-md max-h-40 overflow-y-auto bg-background z-10'>
-							{filteredCustomerNames.length > 0 ? (
-								filteredCustomerNames.map(customer => (
-									<div
-										key={customer.id}
-										className='p-2 hover:bg-accent cursor-pointer'
-										onClick={() => handleSelectCustomer(customer.id)}>
-										{getCustomerDisplayName(customer)}
-									</div>
-								))
-							) : (
-								<>
-									{customerSearchLoading && <div className='p-2 text-muted-foreground'>Searching...</div>}
-									{liveCustomerResults.length > 0
-										? liveCustomerResults.map(customer => (
-												<div
-													key={customer.id}
-													className='p-2 hover:bg-accent cursor-pointer'
-													onClick={() => handleSelectCustomer(customer.id)}>
-													{getCustomerDisplayName(customer)}
-												</div>
-											))
-										: !customerSearchLoading && (
-												<div className='text-sm text-muted-foreground'>
-													No customers found.
-													<Sheet
-														open={isCustomerSheetOpen}
-														onOpenChange={setIsCustomerSheetOpen}>
-														<SheetTrigger asChild>
-															<Button
-																type='button'
-																variant='link'
-																size='sm'
-																className='p-1'>
-																Add New?
-															</Button>
-														</SheetTrigger>
-														<SheetContent className='w-full overflow-y-auto sm:max-w-md'>
-															<SheetHeader>
-																<SheetTitle>Add New Customer</SheetTitle>
-															</SheetHeader>
-															<CustomerForm onSuccess={handleNewCustomerSuccess} />
-														</SheetContent>
-													</Sheet>
-												</div>
-											)}
-								</>
-							)}
+							{customerSearchLoading && <div className='p-2 text-muted-foreground'>Searching...</div>}
+							{liveCustomerResults.length > 0
+								? liveCustomerResults.map(customer => (
+										<div
+											key={customer.id}
+											className='p-2 hover:bg-accent cursor-pointer'
+											onClick={() => handleSelectCustomer(customer)}>
+											{getCustomerDisplayName(customer)}
+										</div>
+									))
+								: !customerSearchLoading && (
+										<div className='text-sm text-muted-foreground'>
+											No customers found.
+											<Sheet
+												open={isCustomerSheetOpen}
+												onOpenChange={setIsCustomerSheetOpen}>
+												<SheetTrigger asChild>
+													<Button
+														type='button'
+														variant='link'
+														size='sm'
+														className='p-1'>
+														Add New?
+													</Button>
+												</SheetTrigger>
+												<SheetContent className='w-full overflow-y-auto sm:max-w-md'>
+													<SheetHeader>
+														<SheetTitle>Add New Customer</SheetTitle>
+													</SheetHeader>
+													<CustomerForm onSuccess={handleNewCustomerSuccess} />
+												</SheetContent>
+											</Sheet>
+										</div>
+									)}
 						</div>
 					)}
 					{selectedCustomerName && (
@@ -397,30 +353,17 @@ export function NewSaleForm() {
 					</div>
 					{searchTerm && (
 						<div className='border rounded-md max-h-60 overflow-y-auto'>
-							{filteredItemNames.length > 0 ? (
-								filteredItemNames.map(item => (
-									<div
-										key={item.id}
-										className='p-2 hover:bg-accent cursor-pointer'
-										onClick={() => handleSelectItem(item.id)}>
-										{getItemDisplayName(item)}
-									</div>
-								))
-							) : (
-								<>
-									{itemsLoading && <div className='p-2 text-muted-foreground'>Searching...</div>}
-									{liveItems.length > 0
-										? liveItems.map(item => (
-												<div
-													key={item.id}
-													className='p-2 hover:bg-accent cursor-pointer'
-													onClick={() => handleSelectItem(item.id)}>
-													{item.name} (Stock: {item.quantity_in_stock}, Price: {item.price.toFixed(2)})
-												</div>
-											))
-										: !itemsLoading && <p className='text-sm text-muted-foreground'>No items found.</p>}
-								</>
-							)}
+							{itemsLoading && <div className='p-2 text-muted-foreground'>Searching...</div>}
+							{liveItems.length > 0
+								? liveItems.map(item => (
+										<div
+											key={item.id}
+											className='p-2 hover:bg-accent cursor-pointer'
+											onClick={() => handleSelectItem(item)}>
+											{getItemDisplayName(item)}
+										</div>
+									))
+								: !itemsLoading && <p className='text-sm text-muted-foreground'>No items found.</p>}
 						</div>
 					)}
 				</div>

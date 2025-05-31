@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { itemSchema } from '@/lib/validations/item'
+import { esClient } from '@/lib/elastic'
+import { ElasticIndex } from '@/types/common'
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
 	const items = await db.item.findMany({
 		include: {
 			categories: true,
@@ -35,7 +37,21 @@ export async function POST(req: NextRequest) {
 						...itemData,
 						categories: categoryIds && categoryIds.length ? { connect: categoryIds.map((id: string) => ({ id })) } : undefined,
 					},
+					include: {
+						categories: true,
+						supplier: true,
+					},
 				})
+
+				// Index the upserted item in Elasticsearch
+				await esClient.index({
+					index: ElasticIndex.ITEMS,
+					id: upserted.id,
+					document: {
+						...upserted,
+					},
+				})
+
 				results.push({ success: true, item: upserted })
 			} catch (err: any) {
 				results.push({ success: false, error: err.message, item: rawItem })

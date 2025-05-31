@@ -31,3 +31,11 @@ export interface DataTableColumn {
 	header: string
 	cell: (props: { row: any }) => React.ReactNode
 }
+
+export enum ElasticIndex {
+	ITEMS = 'items',
+	CUSTOMERS = 'customers',
+	REPORTS = 'reports',
+	SALES = 'sales',
+	USERS = 'users',
+}

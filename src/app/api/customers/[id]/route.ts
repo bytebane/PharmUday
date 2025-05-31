@@ -2,15 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { customerSchema } from '@/lib/validations/customer'
-import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
+import { authorize } from '@/lib/utils/auth-utils'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
-		const user = await getCurrentUser()
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 		const { id } = await params
 		const customer = await db.customer.findUnique({ where: { id } })
 		if (!customer) return new NextResponse('Customer not found', { status: 404 })
@@ -23,10 +21,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
-		const user = await getCurrentUser()
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
 		const { id } = await params
 		const json = await req.json()
@@ -57,10 +53,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
-		const user = await getCurrentUser()
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 		const { id } = await params
 		// Consider implications: what if customer has sales? Prisma schema has onDelete:SetNull for sales.
 		await db.customer.delete({ where: { id } })

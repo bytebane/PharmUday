@@ -32,7 +32,7 @@ async function main() {
 				emailVerified: new Date(),
 			},
 		})
-		console.log(`Super Admin "${superAdminName}" created with email ${superAdminEmail}`)
+		console.log(`Super Admin "${superAdmin.name}" created with email ${superAdmin.email}`)
 	} else {
 		console.log(`Super Admin with email ${superAdminEmail} already exists.`)
 	}
@@ -80,6 +80,17 @@ async function main() {
 				role: Role.CUSTOMER,
 				isActive: true,
 				emailVerified: new Date(),
+			},
+		})
+		await prisma.customer.create({
+			data: {
+				email: customerEmail,
+				name: customerName,
+				phone: '1234567890', // Default phone number
+				address: '123 Customer St, City, Country', // Default address
+				user: {
+					connect: { email: customerEmail },
+				},
 			},
 		})
 		console.log(`Customer user created with email ${customerEmail}`)

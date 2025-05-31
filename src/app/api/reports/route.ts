@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { reportCreateSchema } from '@/lib/validations/report'
-import { getCurrentUser } from '@/lib/auth'
 import { put } from '@vercel/blob' // Import Vercel Blob SDK
 import { nanoid } from 'nanoid' // For generating unique filenames
 import { parseFormData } from '@/lib/utils/formData-utils'
+import { authorize } from '@/lib/utils/auth-utils'
+import { Role } from '@/generated/prisma'
 
 const paginationSchema = z.object({
 	page: z.coerce.number().min(1).default(1),
@@ -58,10 +59,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: NextRequest) {
 	try {
-		const user = await getCurrentUser()
-		if (!user) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { user, response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
 		// Define the expected shape of non-file form data for type safety with parseFormData
 		type ReportCreateFormData = Omit<z.infer<typeof reportCreateSchema>, 'file'> // Assuming 'file' is not part of schema for text fields
@@ -96,7 +95,7 @@ export async function POST(req: NextRequest) {
 				fileUrl: blob.url, // Store the actual URL from your storage service
 				fileType: file.type,
 				fileSize: file.size,
-				uploadedById: user.id, // Store the URL from Vercel Blob
+				uploadedById: user!.id, // Store the URL from Vercel Blob
 			},
 		})
 		return NextResponse.json(report, { status: 201 })

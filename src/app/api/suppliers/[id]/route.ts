@@ -3,8 +3,8 @@ import { z } from 'zod'
 
 import { db } from '@/lib/db'
 import { supplierPatchSchema } from '@/lib/validations/supplier'
-import { getCurrentUser } from '@/lib/auth'
 import { Role } from '@/generated/prisma'
+import { authorize } from '@/lib/utils/auth-utils'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
@@ -28,10 +28,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
-		const user = await getCurrentUser()
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
 		const { id } = await params
 		const json = await req.json()
@@ -54,10 +52,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
-		const user = await getCurrentUser()
-		if (!user || ![Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN].includes(user.role as 'SUPER_ADMIN' | 'ADMIN' | 'PHARMACIST')) {
-			return new NextResponse('Unauthorized', { status: 401 })
-		}
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
 		const { id } = await params
 
