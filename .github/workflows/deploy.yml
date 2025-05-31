@@ -51,6 +51,10 @@ jobs:
                   POSTY_DB_NAME=${{ secrets.POSTY_DB_NAME }}
                   PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}
                   DATABASE_URL=${{ secrets.DATABASE_URL }}
+
+                  ELASTICSEARCH_URL=${{ secrets.ELASTICSEARCH_URL }}
+                  ELASTICSEARCH_USERNAME=${{ secrets.ELASTICSEARCH_USERNAME }}
+                  ELASTICSEARCH_PASSWORD=${{ secrets.ELASTICSEARCH_PASSWORD }}
                   EOF
 
             - name: Copy files to Droplet
