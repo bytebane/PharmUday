@@ -10,7 +10,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ColumnDef, SortingState, PaginationState } from '@tanstack/react-table'
 import { Input } from '@/components/ui/input'
 import { fetchSalesHistory_cli } from '@/services/saleService'
-import { Skeleton } from '@/components/ui/skeleton'
 import { CustomDataTable } from '@/components/custom/custom-data-table'
 
 export function SalesHistoryList() {
@@ -143,19 +142,16 @@ export function SalesHistoryList() {
 	return (
 		<div className='w-full'>
 			<div className='mb-4 flex flex-wrap items-center gap-2 rounded-md border p-4'>
-				{isLoading ? (
-					<Skeleton className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-2xs' />
-				) : (
-					<Input
-						placeholder='Search invoice #, customer, staff...'
-						value={search}
-						onChange={event => {
-							setSearch(event.target.value)
-							setPagination(p => ({ ...p, pageIndex: 0 }))
-						}}
-						className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-sm'
-					/>
-				)}
+				<Input
+					placeholder='Search invoice #, customer, staff...'
+					value={search}
+					onChange={event => {
+						setSearch(event.target.value)
+						setPagination(p => ({ ...p, pageIndex: 0 }))
+					}}
+					className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-sm'
+				/>
+
 				<div className='flex gap-2'>
 					<Button
 						variant={period === 'today' ? 'default' : 'outline'}
