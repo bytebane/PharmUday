@@ -74,10 +74,27 @@ services:
     ports:
       - "5050:80"
 
+  elastic-search:
+    container_name: elastic-search
+    restart: always
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.0.1
+    environment:
+        - discovery.type=single-node
+        - ES_JAVA_OPTS=-Xms512m -Xmx512m
+        - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
+        - xpack.security.enabled=true
+    ports:
+        - "9200:9200"
+    volumes:
+        - elastic_data:/usr/share/elasticsearch/data
+    networks:
+        - db_net
+
 volumes:
   letsencrypt:
   posty_data:
   pgadmin_data:
+  elastic_data:
 
 networks:
   web:
