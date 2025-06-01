@@ -181,38 +181,6 @@ const indexConfigs = {
 			},
 		},
 	},
-	[ElasticIndex.REPORTS]: {
-		settings: {
-			number_of_shards: 1,
-			number_of_replicas: 0,
-			refresh_interval: '1s',
-			analysis: {
-				analyzer: {
-					case_insensitive: {
-						type: 'custom',
-						tokenizer: 'standard',
-						filter: ['lowercase'],
-					},
-				},
-			},
-		},
-		mappings: {
-			properties: {
-				id: { type: 'keyword' },
-				title: { type: 'text', analyzer: 'case_insensitive' },
-				patientName: { type: 'text', analyzer: 'case_insensitive' },
-				reportDate: { type: 'date' },
-				fileUrl: { type: 'text', index: false },
-				fileType: { type: 'keyword' },
-				fileSize: { type: 'integer' },
-				notes: { type: 'text', analyzer: 'case_insensitive' },
-				categoryId: { type: 'keyword' },
-				uploadedById: { type: 'keyword' },
-				createdAt: { type: 'date' },
-				updatedAt: { type: 'date' },
-			},
-		},
-	},
 }
 
 async function ensureAllIndices() {
@@ -221,131 +189,113 @@ async function ensureAllIndices() {
 	}
 }
 
-// Ensure all indices exist before syncing data
-ensureAllIndices()
-
-async function syncItems() {
-	console.log('Syncing items to Elasticsearch...')
-	const items = await db.item.findMany({
-		include: {
-			categories: true,
-			supplier: true,
-		},
-	})
-
-	console.log(`Found ${items.length} items to sync`)
-	for (const item of items) {
-		await esClient.index({
-			index: ElasticIndex.ITEMS,
-			id: item.id,
-			document: {
-				...item,
-			},
-		})
-		console.log(`Indexed item ${item.id}`)
-	}
-
-	console.log('Sync complete!')
+// Memory-optimized batch sizes for production
+const BATCH_SIZES = {
+	items: 25, // Reduced from unlimited
+	sales: 15, // Sales have more nested data
+	customers: 50, // Lighter objects
+	users: 100, // Very light objects
 }
 
-async function syncCustomers() {
-	console.log('Syncing customers to Elasticsearch...')
-	const customers = await db.customer.findMany()
-	console.log(`Found ${customers.length} customers to sync`)
-	for (const customer of customers) {
-		await esClient
-			.index({
-				index: ElasticIndex.CUSTOMERS,
-				id: customer.id,
-				document: {
-					...customer,
-				},
-			})
-			.catch(err => {
-				console.error('Error indexing customer:', err)
-			})
+// Add delay between batches to prevent memory spikes
+const BATCH_DELAY = 2000 // 2 seconds
 
-		console.log(`Indexed customer ${customer.id}`)
+async function syncWithBatching<T>(fetchFn: () => Promise<T[]>, indexName: string, batchSize: number, label: string) {
+	console.log(`Syncing ${label} to Elasticsearch...`)
+
+	const items = await fetchFn()
+	console.log(`Found ${items.length} ${label} to sync`)
+
+	if (items.length === 0) return
+
+	for (let i = 0; i < items.length; i += batchSize) {
+		const batch = items.slice(i, i + batchSize)
+		const batchNum = Math.floor(i / batchSize) + 1
+		const totalBatches = Math.ceil(items.length / batchSize)
+
+		console.log(`Processing ${label} batch ${batchNum}/${totalBatches} (${batch.length} items)`)
+
+		try {
+			// Process batch
+			for (const item of batch) {
+				await esClient.index({
+					index: indexName,
+					id: (item as any).id,
+					document: item,
+				})
+			}
+
+			console.log(`✅ ${label} batch ${batchNum} completed`)
+
+			// Add delay between batches to prevent memory overload
+			if (i + batchSize < items.length) {
+				console.log(`Waiting ${BATCH_DELAY}ms before next batch...`)
+				await new Promise(resolve => setTimeout(resolve, BATCH_DELAY))
+			}
+		} catch (error) {
+			console.error(`❌ Error processing ${label} batch ${batchNum}:`, error)
+			// Continue with next batch instead of failing completely
+		}
 	}
+
+	console.log(`✅ ${label} sync completed`)
 }
 
-async function syncUsers() {
-	console.log('Syncing users to Elasticsearch...')
-	const users = await db.user.findMany({})
+async function main() {
+	try {
+		// Ensure indices exist first
+		console.log('Ensuring Elasticsearch indices exist...')
+		await ensureAllIndices()
 
-	console.log(`Found ${users.length} users to sync`)
-	for (const user of users) {
-		await esClient
-			.index({
-				index: ElasticIndex.USERS,
-				id: user.id,
-				document: {
-					...user,
-				},
-			})
-			.catch(err => {
-				console.error('Error indexing user:', err)
-			})
-		console.log(`Indexed user ${user.id}`)
-	}
-}
+		// Sync in order of importance and memory usage (lightest first)
+		await syncWithBatching(() => db.user.findMany({}), ElasticIndex.USERS, BATCH_SIZES.users, 'users')
 
-async function syncSales() {
-	console.log('Syncing sales to Elasticsearch...')
-	const sales = await db.sale.findMany({
-		include: {
-			invoice: true,
-			customer: true,
-			staff: true,
-			saleItems: {
-				include: {
-					item: {
-						select: {
-							id: true,
-							name: true,
-							strength: true,
-							formulation: true,
+		await syncWithBatching(() => db.customer.findMany({}), ElasticIndex.CUSTOMERS, BATCH_SIZES.customers, 'customers')
+
+		await syncWithBatching(
+			() =>
+				db.item.findMany({
+					include: {
+						categories: true,
+						supplier: true,
+					},
+				}),
+			ElasticIndex.ITEMS,
+			BATCH_SIZES.items,
+			'items',
+		)
+
+		await syncWithBatching(
+			() =>
+				db.sale.findMany({
+					include: {
+						invoice: true,
+						customer: true,
+						staff: true,
+						saleItems: {
+							include: {
+								item: {
+									select: {
+										id: true,
+										name: true,
+										strength: true,
+										formulation: true,
+									},
+								},
+							},
 						},
 					},
-				},
-				orderBy: { createdAt: 'asc' },
-			},
-		},
-	})
-	console.log(`Found ${sales.length} sales to sync`)
-	for (const sale of sales) {
-		await esClient
-			.index({
-				index: ElasticIndex.SALES,
-				id: sale.id,
-				document: {
-					...sale,
-				},
-			})
-			.catch(err => {
-				console.error('Error indexing sale:', err)
-			})
+				}),
+			ElasticIndex.SALES,
+			BATCH_SIZES.sales,
+			'sales',
+		)
+
+		console.log('🎉 All data synced successfully!')
+	} catch (error) {
+		console.error('💥 Sync failed:', error)
+		process.exit(1)
 	}
 }
 
-syncUsers().catch(err => {
-	console.error('Sync failed:', err)
-	process.exit(1)
-})
-
-syncCustomers().catch(err => {
-	console.error('Sync failed:', err)
-	process.exit(1)
-})
-
-syncSales().catch(err => {
-	console.error('Sync failed:', err)
-	process.exit(1)
-})
-
-syncItems()
-	.catch(err => {
-		console.error('Sync failed:', err)
-		process.exit(1)
-	})
-	.finally(() => process.exit(0))
+main()

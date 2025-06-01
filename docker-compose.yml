@@ -35,6 +35,13 @@ services:
     networks:
       - web
       - db_net
+    depends_on:
+      - db-postgres
+      - elastic-search
+    deploy:
+      resources:
+        limits:
+          memory: 512m  # Limit app memory
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.pharmpilot.rule=Host(`localhost`)" # Change to your domain in production
@@ -51,28 +58,42 @@ services:
       POSTGRES_USER: ${ADMIN_EMAIL}
       POSTGRES_PASSWORD: ${POSTY_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
+      # Optimize PostgreSQL for low memory
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    command: |
+      postgres
+      -c shared_buffers=128MB
+      -c effective_cache_size=256MB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
     volumes:
       - posty_data:/var/lib/postgresql/data
     networks:
       - db_net
     ports:
       - "5432:5432"
+    deploy:
+      resources:
+        limits:
+          memory: 384m
 
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pharmpilot-pgadmin
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${ADMIN_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    networks:
-      - db_net
-    depends_on:
-      - db-postgres
-    ports:
-      - "5050:80"
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   container_name: pharmpilot-pgadmin
+  #   restart: always
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: ${ADMIN_EMAIL}
+  #     PGLADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+  #   networks:
+  #     - db_net
+  #   depends_on:
+  #     - db-postgres
+  #   ports:
+  #     - "5050:80"
 
   elastic-search:
     container_name: elastic-search
@@ -80,20 +101,29 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.0.1
     environment:
         - discovery.type=single-node
-        - ES_JAVA_OPTS=-Xms512m -Xmx512m
+        - ES_JAVA_OPTS=-Xms256m -Xmx512m  # Reduced from 512m-512m
         - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
         - xpack.security.enabled=true
+        - "bootstrap.memory_lock=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     ports:
         - "9200:9200"
     volumes:
         - elastic_data:/usr/share/elasticsearch/data
     networks:
         - db_net
+    deploy:
+      resources:
+        limits:
+          memory: 768m  # Hard memory limit
 
 volumes:
   letsencrypt:
   posty_data:
-  pgadmin_data:
+  # pgadmin_data:
   elastic_data:
 
 networks:
