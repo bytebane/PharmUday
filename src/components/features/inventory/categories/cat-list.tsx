@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { Category as PrismaCategory } from '@/generated/prisma'
 import { Role } from '@/generated/prisma'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,7 @@ const categoryQueryKeys = {
 export function CategoryList() {
 	const { data: session } = useSession()
 	const queryClient = useQueryClient()
+	const router = useRouter()
 	const [isSheetOpen, setIsSheetOpen] = useState(false)
 	const [editingCategory, setEditingCategory] = useState<CategoryWithParent | null>(null)
 	const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
@@ -58,6 +60,7 @@ export function CategoryList() {
 		},
 	})
 
+	// Handlers
 	const handleEdit = useCallback((category: CategoryWithParent) => {
 		setEditingCategory(category)
 		setIsSheetOpen(true)
@@ -81,6 +84,14 @@ export function CategoryList() {
 		setEditingCategory(null)
 	}, [])
 
+	// Navigate to items page with category filter
+	const handleCategoryClick = useCallback(
+		(categoryId: string) => {
+			router.push(`/inventory/items?categoryId=${categoryId}`)
+		},
+		[router],
+	)
+
 	const columns = useMemo<ColumnDef<CategoryWithParent>[]>(
 		() => [
 			{
@@ -92,7 +103,13 @@ export function CategoryList() {
 						Name <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => row.getValue('name'),
+				cell: ({ row }) => (
+					<button
+						onClick={() => handleCategoryClick(row.original.id)}
+						className='font-medium hover:underline cursor-pointer text-left'>
+						{row.getValue('name')}
+					</button>
+				),
 			},
 			{
 				accessorKey: 'description',
@@ -150,7 +167,7 @@ export function CategoryList() {
 					]
 				: []),
 		],
-		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete],
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete, handleCategoryClick],
 	)
 
 	const isAnyFilterActive = !!search
