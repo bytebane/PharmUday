@@ -1,6 +1,12 @@
 # ---- Base Stage ----
 # Common setup for both development and production builds
 FROM node:24-slim AS common_base
+
+# Install OpenSSL and other required packages
+RUN apt-get update -y && \
+    apt-get install -y openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+# Set the working directory to the application root
 WORKDIR /app
 
 # Install dependencies
