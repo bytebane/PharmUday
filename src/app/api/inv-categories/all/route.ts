@@ -3,17 +3,17 @@ import { db } from '@/lib/db'
 
 export async function GET() {
 	try {
-		const items = await db.item.findMany({
+		const categories = await db.category.findMany({
 			select: {
 				id: true,
 				name: true,
-				generic_name: true,
 			},
 			orderBy: { name: 'asc' },
 		})
-		return NextResponse.json(items)
+
+		return NextResponse.json(categories)
 	} catch (error) {
-		console.error('[ITEM_NAMES_GET]', error)
+		console.error('[CATEGORIES_ALL_GET]', error)
 		return new NextResponse('Internal Server Error', { status: 500 })
 	}
 }

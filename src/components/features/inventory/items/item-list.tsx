@@ -19,8 +19,12 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AddFAB } from '@/components/AddFAB'
+import { ItemDetailsSheet } from './item-details-sheet'
 import { useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
+import { useColumnVisibility } from '@/hooks/useColumnVisibility'
+import { ColumnVisibilityToggle } from '@/components/features/inventory/column-visibility-toggle'
+import Image from 'next/image'
 
 const itemQueryKeys = {
 	all: ['items'] as const,
@@ -36,7 +40,11 @@ export function ItemList() {
 
 	const searchParams = useSearchParams()
 
-	const urlFilter = searchParams.get('status')
+	// Get URL parameters for initial filters
+	const urlStatus = searchParams.get('status')
+	const urlCategoryId = searchParams.get('categoryId')
+	const urlSupplierId = searchParams.get('supplierId')
+	const urlSearch = searchParams.get('search')
 
 	// Table state
 	const [isSheetOpen, setIsSheetOpen] = useState(false)
@@ -45,16 +53,29 @@ export function ItemList() {
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => {
 		const filters: ColumnFiltersState = []
-		if (urlFilter === 'expiring_soon') filters.push({ id: 'expiry_date', value: 'expiring_soon' })
-		else if (urlFilter === 'out_of_stock') filters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
+		if (urlStatus === 'expiring_soon') filters.push({ id: 'expiry_date', value: 'expiring_soon' })
+		else if (urlStatus === 'expired') filters.push({ id: 'expiry_date', value: 'expired' })
+		else if (urlStatus === 'out_of_stock') filters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
+		if (urlCategoryId) filters.push({ id: 'categories', value: urlCategoryId })
+		if (urlSupplierId) filters.push({ id: 'supplierId', value: urlSupplierId })
 		return filters
 	})
-	const [globalFilter, setGlobalFilter] = useState('')
+	const [globalFilter, setGlobalFilter] = useState(urlSearch || '')
 	const [filters, setFilters] = useState<{ status?: string; categoryId?: string; supplierId?: string; search?: string }>(() => ({
-		status: urlFilter ?? undefined,
+		status: urlStatus ?? undefined,
+		categoryId: urlCategoryId ?? undefined,
+		supplierId: urlSupplierId ?? undefined,
+		search: urlSearch ?? undefined,
 	}))
 	const [isImporting, setIsImporting] = useState(false)
 	const [isExporting, setIsExporting] = useState(false)
+
+	// Item details view state
+	const [selectedItem, setSelectedItem] = useState<ItemWithRelations | null>(null)
+	const [isDetailsViewOpen, setIsDetailsViewOpen] = useState(false)
+
+	// Column visibility
+	const { columnVisibility, toggleColumn, resetToDefaults, isColumnVisible, applyPreset, showAllColumns, hideAllColumns, isColumnRequired, isHydrated } = useColumnVisibility()
 
 	// Data fetching
 	const {
@@ -117,6 +138,36 @@ export function ItemList() {
 		setEditingItem(null)
 	}, [])
 
+	// Item details handlers
+	const handleItemClick = useCallback((item: ItemWithRelations) => {
+		setSelectedItem(item)
+		setIsDetailsViewOpen(true)
+	}, [])
+
+	const handleCloseDetailsView = useCallback(() => {
+		setIsDetailsViewOpen(false)
+		setSelectedItem(null)
+	}, [])
+
+	// Category/Supplier filter handlers
+	const handleCategoryFilter = useCallback((categoryId: string) => {
+		setFilters(f => ({ ...f, categoryId }))
+		setColumnFilters(prev => {
+			const filtered = prev.filter(f => f.id !== 'categories')
+			return [...filtered, { id: 'categories', value: categoryId }]
+		})
+		setPagination(p => ({ ...p, pageIndex: 0 }))
+	}, [])
+
+	const handleSupplierFilter = useCallback((supplierId: string) => {
+		setFilters(f => ({ ...f, supplierId }))
+		setColumnFilters(prev => {
+			const filtered = prev.filter(f => f.id !== 'supplierId')
+			return [...filtered, { id: 'supplierId', value: supplierId }]
+		})
+		setPagination(p => ({ ...p, pageIndex: 0 }))
+	}, [])
+
 	const handleExport = async () => {
 		setIsExporting(true)
 		try {
@@ -172,9 +223,9 @@ export function ItemList() {
 		const { name, generic_name, manufacturer, description } = row.original
 		return name.toLowerCase().includes(searchTerm) || (generic_name || '').toLowerCase().includes(searchTerm) || (manufacturer || '').toLowerCase().includes(searchTerm) || (description || '').toLowerCase().includes(searchTerm)
 	}, [])
-
-	const columns = useMemo<ColumnDef<ItemWithRelations>[]>(
-		() => [
+	const columns = useMemo<ColumnDef<ItemWithRelations>[]>(() => {
+		const baseColumns: ColumnDef<ItemWithRelations>[] = [
+			// Core identification fields
 			{
 				accessorKey: 'name',
 				header: ({ column }) => (
@@ -184,7 +235,13 @@ export function ItemList() {
 						Name <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => <div className='font-medium'>{row.getValue('name')}</div>,
+				cell: ({ row }) => (
+					<button
+						onClick={() => handleItemClick(row.original)}
+						className='font-medium hover:underline cursor-pointer text-left'>
+						{row.getValue('name')}
+					</button>
+				),
 			},
 			{
 				accessorKey: 'generic_name',
@@ -197,6 +254,17 @@ export function ItemList() {
 				),
 			},
 			{
+				accessorKey: 'manufacturer',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Manufacturer <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+			},
+			// Categories and supplier
+			{
 				accessorKey: 'categories',
 				header: ({ column }) => (
 					<Button
@@ -205,7 +273,25 @@ export function ItemList() {
 						Categories <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => row.original.categories.map(cat => cat.name).join(', ') || 'N/A',
+				cell: ({ row }) => {
+					const categories = row.original.categories
+					if (!categories || categories.length === 0) return 'N/A'
+
+					return (
+						<div className='flex flex-wrap gap-1'>
+							{categories.map((cat, index) => (
+								<span key={cat.id}>
+									<button
+										onClick={() => handleCategoryFilter(cat.id)}
+										className='hover:underline cursor-pointer'>
+										{cat.name}
+									</button>
+									{index < categories.length - 1 && ', '}
+								</span>
+							))}
+						</div>
+					)
+				},
 				sortingFn: (rowA, rowB) => {
 					const valA = rowA.original.categories
 						.map(cat => cat.name)
@@ -231,7 +317,18 @@ export function ItemList() {
 						Supplier <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => row.original.supplier?.name || 'N/A',
+				cell: ({ row }) => {
+					const supplier = row.original.supplier
+					if (!supplier) return 'N/A'
+
+					return (
+						<button
+							onClick={() => handleSupplierFilter(supplier.id)}
+							className='hover:underline cursor-pointer'>
+							{supplier.name}
+						</button>
+					)
+				},
 				sortingFn: (rowA, rowB) => {
 					const valA = (rowA.original.supplier?.name || '').toLowerCase()
 					const valB = (rowB.original.supplier?.name || '').toLowerCase()
@@ -242,6 +339,69 @@ export function ItemList() {
 					return row.original.supplierId === filterValue
 				},
 			},
+			// Physical properties
+			{
+				accessorKey: 'formulation',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Formulation <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+			},
+			{
+				accessorKey: 'strength',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Strength <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+			},
+			{
+				accessorKey: 'unit',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Unit <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+			},
+			{
+				accessorKey: 'units_per_pack',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Units per Pack <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+			},
+			// Regulatory and description
+			{
+				accessorKey: 'schedule',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Schedule <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+			},
+			{
+				accessorKey: 'description',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Description <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+			},
+			// Stock and inventory
 			{
 				accessorKey: 'quantity_in_stock',
 				header: ({ column }) => (
@@ -253,15 +413,14 @@ export function ItemList() {
 				),
 			},
 			{
-				accessorKey: 'price',
+				accessorKey: 'reorder_level',
 				header: ({ column }) => (
 					<Button
 						variant='ghost'
 						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
-						Price <ArrowUpDown className='ml-2 h-4 w-4' />
+						Reorder Level <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => (row.getValue('price') as number).toFixed(2),
 			},
 			{
 				accessorKey: 'expiry_date',
@@ -288,61 +447,231 @@ export function ItemList() {
 					return true
 				},
 			},
-			// Actions column for admin/pharmacist
-			...(session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST
-				? [
-						{
-							id: 'actions',
-							header: () => <div className='text-right'>Actions</div>,
-							cell: ({ row }: { row: { original: ItemWithRelations } }) => (
-								<div className='text-right'>
-									<DropdownMenu>
-										<DropdownMenuTrigger asChild>
-											<Button
-												variant='ghost'
-												className='h-8 w-8 p-0'>
-												<span className='sr-only'>Open menu</span>
-												<MoreHorizontal className='h-4 w-4' />
-											</Button>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align='end'>
-											<DropdownMenuItem onClick={() => handleEdit(row.original)}>
-												<Edit className='mr-2 h-4 w-4' /> Edit
-											</DropdownMenuItem>
-											<DropdownMenuItem
-												onClick={() => handleDelete(row.original.id)}
-												disabled={deleteMutation.isPending && deleteMutation.variables === row.original.id}
-												className='text-red-600 focus:text-red-700 focus:bg-red-50'>
-												<Trash2 className='mr-2 h-4 w-4' /> Delete
-											</DropdownMenuItem>
-										</DropdownMenuContent>
-									</DropdownMenu>
-								</div>
-							),
-						} as ColumnDef<ItemWithRelations>,
-					]
-				: []),
-		],
-		[deleteMutation, handleEdit, handleDelete, globalFilterFn, session?.user?.role],
-	)
+			// Pricing
+			{
+				accessorKey: 'price',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Price <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => (row.getValue('price') as number).toFixed(2),
+			},
+			{
+				accessorKey: 'purchase_price',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Purchase Price <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => {
+					const price = row.getValue('purchase_price') as number | null
+					return price ? price.toFixed(2) : 'N/A'
+				},
+			},
+			{
+				accessorKey: 'tax_rate',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Tax Rate <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => {
+					const rate = row.getValue('tax_rate') as number | null
+					return rate ? `${(rate * 100).toFixed(1)}%` : 'N/A'
+				},
+			},
+			{
+				accessorKey: 'discount',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Discount <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => {
+					const discount = row.getValue('discount') as number | null
+					return discount ? `${(discount * 100).toFixed(1)}%` : 'N/A'
+				},
+			},
+			// Purchase information
+			{
+				accessorKey: 'purchase_date',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Purchase Date <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => {
+					const date = row.getValue('purchase_date') as string | null
+					return date ? new Date(date).toLocaleDateString() : 'N/A'
+				},
+			},
+			// Status flags
+			{
+				accessorKey: 'isActive',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Active <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => (row.getValue('isActive') ? 'Yes' : 'No'),
+			},
+			{
+				accessorKey: 'isAvailable',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Available <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => (row.getValue('isAvailable') ? 'Yes' : 'No'),
+			},
+			// Media
+			{
+				accessorKey: 'image',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Image <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => {
+					const imageUrl = row.getValue('image') as string | null
+					return imageUrl ? (
+						<Image
+							src={imageUrl}
+							alt='Item'
+							className='w-10 h-10 object-cover rounded'
+							width={40}
+							height={40}
+						/>
+					) : (
+						'N/A'
+					)
+				},
+			},
+			// Timestamps
+			{
+				accessorKey: 'createdAt',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Created <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => new Date(row.getValue('createdAt') as string).toLocaleDateString(),
+			},
+			{
+				accessorKey: 'updatedAt',
+				header: ({ column }) => (
+					<Button
+						variant='ghost'
+						onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+						Updated <ArrowUpDown className='ml-2 h-4 w-4' />
+					</Button>
+				),
+				cell: ({ row }) => new Date(row.getValue('updatedAt') as string).toLocaleDateString(),
+			},
+		]
 
-	// Sync column filters with urlFilter prop
-	useEffect(() => {
-		setColumnFilters(prevFilters => {
-			const updatedFilters = prevFilters.filter(f => f.id !== 'expiry_date' && f.id !== 'quantity_in_stock')
-			if (urlFilter === 'expiring_soon') updatedFilters.push({ id: 'expiry_date', value: 'expiring_soon' })
-			else if (urlFilter === 'out_of_stock') updatedFilters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
-			const prev = JSON.stringify([...prevFilters].sort((a, b) => String(a.id).localeCompare(String(b.id))))
-			const next = JSON.stringify([...updatedFilters].sort((a, b) => String(a.id).localeCompare(String(b.id))))
-			return prev !== next ? updatedFilters : prevFilters
+		// Filter visible columns
+		const visibleColumns = baseColumns.filter(column => {
+			// For TanStack table, columns with accessorKey automatically get that as their id
+			// If a column has an explicit id, use that, otherwise use accessorKey
+			const columnId = column.id || (column as any).accessorKey
+			return columnId && isColumnVisible(columnId)
 		})
-	}, [urlFilter])
 
-	// Sync filters and pagination with urlFilter prop
+		// Add actions column for admin/pharmacist
+		if (session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST) {
+			visibleColumns.push({
+				id: 'actions',
+				header: () => <div className='text-right'>Actions</div>,
+				cell: ({ row }: { row: { original: ItemWithRelations } }) => (
+					<div className='text-right'>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant='ghost'
+									className='h-8 w-8 p-0'>
+									<span className='sr-only'>Open menu</span>
+									<MoreHorizontal className='h-4 w-4' />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align='end'>
+								<DropdownMenuItem onClick={() => handleEdit(row.original)}>
+									<Edit className='mr-2 h-4 w-4' /> Edit
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									onClick={() => handleDelete(row.original.id)}
+									disabled={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+									className='text-red-600 focus:text-red-700 focus:bg-red-50'>
+									<Trash2 className='mr-2 h-4 w-4' /> Delete
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
+				),
+			} as ColumnDef<ItemWithRelations>)
+		}
+
+		return visibleColumns
+	}, [deleteMutation, handleEdit, handleDelete, handleItemClick, handleCategoryFilter, handleSupplierFilter, globalFilterFn, session?.user?.role, isColumnVisible])
+
+	// Sync filters when URL parameters change
 	useEffect(() => {
-		setFilters(f => ({ ...f, status: urlFilter ?? undefined }))
+		const newStatus = searchParams.get('status')
+		const newCategoryId = searchParams.get('categoryId')
+		const newSupplierId = searchParams.get('supplierId')
+		const newSearch = searchParams.get('search')
+
+		// Update filters state
+		setFilters({
+			status: newStatus ?? undefined,
+			categoryId: newCategoryId ?? undefined,
+			supplierId: newSupplierId ?? undefined,
+			search: newSearch ?? undefined,
+		})
+
+		// Update global filter
+		setGlobalFilter(newSearch || '')
+
+		// Update column filters
+		setColumnFilters(() => {
+			const newFilters: ColumnFiltersState = []
+
+			// Handle status filters
+			if (newStatus === 'expiring_soon') newFilters.push({ id: 'expiry_date', value: 'expiring_soon' })
+			else if (newStatus === 'expired') newFilters.push({ id: 'expiry_date', value: 'expired' })
+			else if (newStatus === 'out_of_stock') newFilters.push({ id: 'quantity_in_stock', value: 'out_of_stock' })
+
+			// Handle category filter
+			if (newCategoryId) newFilters.push({ id: 'categories', value: newCategoryId })
+
+			// Handle supplier filter
+			if (newSupplierId) newFilters.push({ id: 'supplierId', value: newSupplierId })
+
+			return newFilters
+		})
+
+		// Reset pagination when filters change
 		setPagination(p => ({ ...p, pageIndex: 0 }))
-	}, [urlFilter])
+	}, [searchParams])
 
 	const isLoading = isLoadingItems || isLoadingRelated
 	const error = itemsError || relatedError
@@ -450,7 +779,12 @@ export function ItemList() {
 					<Select
 						value={filters.categoryId ?? 'all'}
 						onValueChange={value => {
-							setFilters(f => ({ ...f, categoryId: value === 'all' ? undefined : value }))
+							const categoryId = value === 'all' ? undefined : value
+							setFilters(f => ({ ...f, categoryId }))
+							setColumnFilters(prev => {
+								const filtered = prev.filter(f => f.id !== 'categories')
+								return categoryId ? [...filtered, { id: 'categories', value: categoryId }] : filtered
+							})
 							setPagination(p => ({ ...p, pageIndex: 0 }))
 						}}>
 						<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
@@ -476,7 +810,12 @@ export function ItemList() {
 					<Select
 						value={filters.supplierId ?? 'all'}
 						onValueChange={value => {
-							setFilters(f => ({ ...f, supplierId: value === 'all' ? undefined : value }))
+							const supplierId = value === 'all' ? undefined : value
+							setFilters(f => ({ ...f, supplierId }))
+							setColumnFilters(prev => {
+								const filtered = prev.filter(f => f.id !== 'supplierId')
+								return supplierId ? [...filtered, { id: 'supplierId', value: supplierId }] : filtered
+							})
 							setPagination(p => ({ ...p, pageIndex: 0 }))
 						}}>
 						<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
@@ -502,7 +841,15 @@ export function ItemList() {
 					<Select
 						value={filters.status ?? 'all'}
 						onValueChange={value => {
-							setFilters(f => ({ ...f, status: value === 'all' ? undefined : value }))
+							const status = value === 'all' ? undefined : value
+							setFilters(f => ({ ...f, status }))
+							setColumnFilters(prev => {
+								const filtered = prev.filter(f => f.id !== 'expiry_date' && f.id !== 'quantity_in_stock')
+								if (status === 'expiring_soon') return [...filtered, { id: 'expiry_date', value: 'expiring_soon' }]
+								if (status === 'expired') return [...filtered, { id: 'expiry_date', value: 'expired' }]
+								if (status === 'out_of_stock') return [...filtered, { id: 'quantity_in_stock', value: 'out_of_stock' }]
+								return filtered
+							})
 							setPagination(p => ({ ...p, pageIndex: 0 }))
 						}}>
 						<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
@@ -531,6 +878,18 @@ export function ItemList() {
 						Reset
 					</Button>
 				)}
+
+				{/* Column visibility toggle */}
+				<ColumnVisibilityToggle
+					columnVisibility={columnVisibility}
+					onToggleColumn={toggleColumn}
+					onResetToDefaults={resetToDefaults}
+					onApplyPreset={applyPreset}
+					onShowAllColumns={showAllColumns}
+					onHideAllColumns={hideAllColumns}
+					isColumnRequired={isColumnRequired}
+					isHydrated={isHydrated}
+				/>
 			</div>
 
 			{/* Data Table */}
@@ -574,6 +933,15 @@ export function ItemList() {
 					/>
 				</SheetContent>
 			</Sheet>
+
+			{/* Item Details View */}
+			<ItemDetailsSheet
+				item={selectedItem}
+				isOpen={isDetailsViewOpen}
+				onOpenChange={setIsDetailsViewOpen}
+				onCategoryFilter={handleCategoryFilter}
+				onSupplierFilter={handleSupplierFilter}
+			/>
 		</div>
 	)
 }

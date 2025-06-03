@@ -87,8 +87,6 @@ export async function GET(req: Request) {
 			const hits = esResult.hits.hits
 			items = hits.map(hit => hit._source)
 			total = typeof esResult.hits.total === 'object' ? esResult.hits.total.value : esResult.hits.total
-
-			console.log(`[ITEMS_GET][ES] Filters/search:`, { search, status, categoryId, supplierId }, items.length, 'items found')
 		} else {
 			// Use DB for all items (no filters, no search)
 			;[items, total] = await Promise.all([
@@ -104,6 +102,11 @@ export async function GET(req: Request) {
 				db.item.count(),
 			])
 		}
+		// show all fields of an item
+		console.log(
+			'Demo items:',
+			items.slice(0, 5).map(item => ({ item })),
+		)
 
 		return NextResponse.json({ items, total })
 	} catch (error) {

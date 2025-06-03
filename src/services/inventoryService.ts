@@ -43,16 +43,20 @@ export async function fetchCategories_cli(page = 1, limit = 10, search = ''): Pr
  * Fetch all categories and suppliers for filters.
  */
 export async function fetchRelatedInventoryData_cli(): Promise<{ categories: BasicCategory[]; suppliers: BasicSupplier[] }> {
-	const [catRes, supRes] = await Promise.all([fetch(`${API_BASE_URL}/inv-categories`), fetch(`${API_BASE_URL}/suppliers`)])
+	const [catRes, supRes] = await Promise.all([
+		fetch(`${API_BASE_URL}/inv-categories/all`), // Fetch all categories
+		fetch(`${API_BASE_URL}/suppliers/all`), // Fetch all suppliers
+	])
 	if (!catRes.ok || !supRes.ok) {
 		throw new Error('Failed to fetch related inventory data (categories or suppliers)')
 	}
-	const catJson = await catRes.json()
-	const supJson = await supRes.json()
-	// If the API returns { categories: [...] }, extract the array
-	const categories = Array.isArray(catJson) ? catJson : (catJson.categories ?? [])
-	const suppliers = Array.isArray(supJson) ? supJson : (supJson.suppliers ?? supJson ?? [])
-	return { categories, suppliers }
+	const categories = await catRes.json()
+	const suppliers = await supRes.json()
+
+	return {
+		categories: Array.isArray(categories) ? categories : [],
+		suppliers: Array.isArray(suppliers) ? suppliers : [],
+	}
 }
 
 /**

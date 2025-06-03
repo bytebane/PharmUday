@@ -3,18 +3,17 @@ import { db } from '@/lib/db'
 
 export async function GET() {
 	try {
-		const customers = await db.customer.findMany({
+		const suppliers = await db.supplier.findMany({
 			select: {
 				id: true,
 				name: true,
-				phone: true,
-				email: true,
 			},
 			orderBy: { name: 'asc' },
 		})
-		return NextResponse.json(customers)
+
+		return NextResponse.json(suppliers)
 	} catch (error) {
-		console.error('[CUSTOMER_NAMES_GET]', error)
+		console.error('[SUPPLIERS_ALL_GET]', error)
 		return new NextResponse('Internal Server Error', { status: 500 })
 	}
 }
