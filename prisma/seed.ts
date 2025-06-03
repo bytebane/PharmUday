@@ -138,10 +138,33 @@ async function main() {
 
 	// --- Seed Items ---
 
-	console.log('Seeding items...')
+	const data = console.log('Seeding items...')
 	for (const item of itemsData) {
 		const supplier = suppliers.find(s => s.name === item.supplierName)
 		const categoryIds = categories.filter(c => item.categoryNames.includes(c.name)).map(c => ({ id: c.id }))
+		const data = {
+			name: item.name,
+			manufacturer: item.manufacturer,
+			generic_name: item.generic_name,
+			formulation: item.formulation,
+			strength: item.strength,
+			unit: item.unit,
+			schedule: item.schedule,
+			description: item.description,
+			units_per_pack: item.units_per_pack,
+			price: item.price,
+			tax_rate: item.tax_rate,
+			discount: item.discount,
+			reorder_level: item.reorder_level,
+			quantity_in_stock: item.quantity_in_stock,
+			expiry_date: item.expiry_date,
+			purchase_price: item.purchase_price || item.price, // Use purchase_price if available, fallback to price
+			purchase_date: item.purchase_date,
+			isActive: item.isActive,
+			isAvailable: item.isAvailable,
+			supplier: supplier ? { connect: { id: supplier.id } } : undefined,
+			categories: { connect: categoryIds },
+		}
 		// Try to find existing item by name (since name is not unique)
 		const existingItem = await prisma.item.findFirst({
 			where: { name: item.name },
@@ -150,23 +173,8 @@ async function main() {
 
 		await prisma.item.upsert({
 			where: { id: existingItem?.id ?? '' }, // If not found, use empty string (will create)
-			update: {},
-			create: {
-				name: item.name,
-				manufacturer: item.manufacturer,
-				generic_name: item.generic_name,
-				formulation: item.formulation,
-				strength: item.strength,
-				unit: item.unit,
-				description: item.description,
-				price: item.price,
-				quantity_in_stock: item.quantity_in_stock,
-				expiry_date: item.expiry_date,
-				isActive: true,
-				isAvailable: true,
-				supplier: supplier ? { connect: { id: supplier.id } } : undefined,
-				categories: { connect: categoryIds },
-			},
+			update: { ...data },
+			create: { ...data },
 		})
 	}
 	console.log('Seeding finished.')

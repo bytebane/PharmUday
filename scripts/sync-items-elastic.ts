@@ -13,14 +13,9 @@ async function ensureIndex(index: string, settings: any, mappings: object) {
 		})
 		console.log(`Created index: ${index}`)
 	} else {
-		// Only update dynamic settings for existing indices
-		const dynamicSettings = { ...settings }
-		delete dynamicSettings.number_of_shards
-		await esClient.indices.putSettings({
-			index,
-			settings: dynamicSettings,
-		})
-		console.log(`Updated settings for index: ${index}`)
+		console.log(`Index ${index} already exists, skipping settings update to avoid conflicts`)
+		// Skip settings update for existing indices to avoid conflicts
+		// Only create if not exists to prevent schema conflicts
 	}
 }
 
