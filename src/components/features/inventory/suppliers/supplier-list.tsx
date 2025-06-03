@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { Supplier as PrismaSupplier } from '@/generated/prisma'
 import { Role } from '@/generated/prisma'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ const supplierQueryKeys = {
 export function SupplierList() {
 	const { data: session } = useSession()
 	const queryClient = useQueryClient()
+	const router = useRouter()
 	const [isSheetOpen, setIsSheetOpen] = useState(false)
 	const [editingSupplier, setEditingSupplier] = useState<PrismaSupplier | null>(null)
 	const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
@@ -54,6 +56,7 @@ export function SupplierList() {
 		},
 	})
 
+	// Handlers
 	const handleEdit = useCallback((supplier: PrismaSupplier) => {
 		setEditingSupplier(supplier)
 		setIsSheetOpen(true)
@@ -77,6 +80,14 @@ export function SupplierList() {
 		setEditingSupplier(null)
 	}, [])
 
+	// Navigate to items page with supplier filter
+	const handleSupplierClick = useCallback(
+		(supplierId: string) => {
+			router.push(`/inventory/items?supplierId=${supplierId}`)
+		},
+		[router],
+	)
+
 	const columns = useMemo<ColumnDef<PrismaSupplier>[]>(
 		() => [
 			{
@@ -88,7 +99,13 @@ export function SupplierList() {
 						Name <ArrowUpDown className='ml-2 h-4 w-4' />
 					</Button>
 				),
-				cell: ({ row }) => row.getValue('name'),
+				cell: ({ row }) => (
+					<button
+						onClick={() => handleSupplierClick(row.original.id)}
+						className='font-medium hover:underline cursor-pointer text-left'>
+						{row.getValue('name')}
+					</button>
+				),
 			},
 			{
 				accessorKey: 'contactPerson',
@@ -157,7 +174,7 @@ export function SupplierList() {
 					]
 				: []),
 		],
-		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete],
+		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete, handleSupplierClick],
 	)
 
 	const isAnyFilterActive = !!search
