@@ -24,7 +24,15 @@ export async function GET(req: NextRequest) {
 				include: {
 					invoice: true,
 					saleItems: { include: { item: true } },
-					staff: { select: { email: true, profile: true } },
+					staff: { 
+						select: { 
+							email: true, 
+							firstName: true, 
+							lastName: true, 
+							name: true,
+							phoneNumber: true 
+						} 
+					},
 				},
 				orderBy: { saleDate: 'desc' },
 				skip: (page - 1) * limit,
