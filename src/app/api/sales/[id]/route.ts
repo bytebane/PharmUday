@@ -14,13 +14,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 		const sale = await db.sale.findUnique({
 			where: { id },
 			include: {
-				staff: { 
-					select: { 
-						id: true, 
-						email: true, 
-						firstName: true, 
-						lastName: true 
-					} 
+				staff: {
+					select: {
+						id: true,
+						email: true,
+						firstName: true,
+						lastName: true,
+					},
 				},
 				customer: true,
 				saleItems: {
