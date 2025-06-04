@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { User } from '@/generated/prisma' // Assuming Role is part of User type
 
-export type UserAccountData = Pick<User, 'id' | 'name' | 'email' | 'role'>
+export type UserAccountData = Pick<User, 'id' | 'name' | 'email' | 'role' | 'firstName' | 'lastName' | 'phoneNumber' | 'address'>
 
 export function useAccountData() {
 	const { data: session, status } = useSession()

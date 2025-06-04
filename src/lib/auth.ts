@@ -54,7 +54,7 @@ export const authOptions: NextAuthOptions = {
 				// Check if user exists and password is correct
 				if (user && user.passwordHash && (await comparePassword(credentials.password, user.passwordHash))) {
 					// Return user object that matches the session/JWT structure
-					return { id: user.id, email: user.email, name: user.name, role: user.role /* add other fields if needed */ }
+					return { id: user.id, email: user.email, name: user.name, role: user.role, firstName: user.firstName, lastName: user.lastName, phoneNumber: user.phoneNumber, address: user.address }
 				} else {
 					return null // Authentication failed
 				}

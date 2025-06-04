@@ -30,15 +30,15 @@ export async function POST(request: Request) {
 		// --- Hash Password ---
 		const passwordHash = await hashPassword(password)
 
-		// --- Create User (and Profile if applicable) ---
+		// --- Create User with profile fields directly ---
 		const user = await db.user.create({
 			data: {
 				email: email.toLowerCase(),
 				passwordHash: passwordHash,
 				name: firstName + ' ' + lastName,
+				firstName: firstName || '',
+				lastName: lastName || '',
 				role: Role.CUSTOMER, // Or determine role based on signup context
-				// Optionally create profile data if provided
-				profile: firstName || lastName ? { create: { firstName, lastName } } : undefined,
 			},
 		})
 

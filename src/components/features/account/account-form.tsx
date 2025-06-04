@@ -17,6 +17,12 @@ const accountFormSchema = z
 		name: z.string().min(2, {
 			message: 'Name must be at least 2 characters.',
 		}),
+		firstName: z.string().min(1, {
+			message: 'First name is required.',
+		}),
+		lastName: z.string().optional(),
+		phoneNumber: z.string().optional(),
+		address: z.string().optional(),
 		email: z.string().email().optional(), // Email will be read-only
 		currentPassword: z.string().optional(),
 		newPassword: z.string().optional(),
@@ -55,7 +61,7 @@ const accountFormSchema = z
 type AccountFormValues = z.infer<typeof accountFormSchema>
 
 interface AccountFormProps {
-	userData: Pick<User, 'id' | 'name' | 'email' | 'role'>
+	userData: Pick<User, 'id' | 'name' | 'email' | 'role' | 'firstName' | 'lastName' | 'phoneNumber' | 'address'>
 }
 
 export function AccountForm({ userData }: AccountFormProps) {
@@ -64,6 +70,10 @@ export function AccountForm({ userData }: AccountFormProps) {
 		resolver: zodResolver(accountFormSchema),
 		defaultValues: {
 			name: userData.name || '',
+			firstName: userData.firstName || '',
+			lastName: userData.lastName || '',
+			phoneNumber: userData.phoneNumber || '',
+			address: userData.address || '',
 			email: userData.email || '', // Email is for display
 			currentPassword: '',
 			newPassword: '',
@@ -71,10 +81,15 @@ export function AccountForm({ userData }: AccountFormProps) {
 		},
 		mode: 'onChange',
 	})
-
 	async function onSubmit(data: AccountFormValues) {
 		setIsSubmitting(true)
-		const payload: any = { name: data.name }
+		const payload: any = {
+			name: data.name,
+			firstName: data.firstName,
+			lastName: data.lastName,
+			phoneNumber: data.phoneNumber,
+			address: data.address,
+		}
 		if (data.newPassword && data.currentPassword) {
 			payload.currentPassword = data.currentPassword
 			payload.newPassword = data.newPassword
@@ -95,7 +110,7 @@ export function AccountForm({ userData }: AccountFormProps) {
 
 			toast.success('Account updated successfully!')
 			form.reset({
-				...data, // Keep name
+				...data, // Keep all form data
 				currentPassword: '', // Clear password fields
 				newPassword: '',
 				confirmNewPassword: '',
@@ -127,6 +142,70 @@ export function AccountForm({ userData }: AccountFormProps) {
 									<FormControl>
 										<Input
 											placeholder='Your name'
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name='firstName'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>First Name</FormLabel>
+									<FormControl>
+										<Input
+											placeholder='Your first name'
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name='lastName'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Last Name</FormLabel>
+									<FormControl>
+										<Input
+											placeholder='Your last name'
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name='phoneNumber'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Phone Number</FormLabel>
+									<FormControl>
+										<Input
+											placeholder='Your phone number'
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name='address'
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Address</FormLabel>
+									<FormControl>
+										<Input
+											placeholder='Your address'
 											{...field}
 										/>
 									</FormControl>

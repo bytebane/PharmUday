@@ -82,6 +82,10 @@ export async function POST(req: NextRequest) {
 				data: {
 					email: body.email,
 					name: body.name,
+					firstName: body.firstName || '',
+					lastName: body.lastName || '',
+					phoneNumber: body.phone,
+					address: body.address || '',
 					passwordHash: hashedPassword,
 					role: Role.CUSTOMER,
 					isActive: true,

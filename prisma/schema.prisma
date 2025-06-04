@@ -5,8 +5,8 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma"
   binaryTargets = ["native", "linux-arm64-openssl-1.1.x", "linux-arm64-openssl-3.0.x"]
 }
 
@@ -38,20 +38,20 @@ model User {
   id            String    @id @default(cuid()) // Using CUID for unique IDs
   email         String    @unique // Email must be unique for login
   name          String // Full name of the user
-  passwordHash  String // Store the hashed password, never plaintext
+  passwordHash  String? // Store the hashed password, optional for OAuth users
   role          Role      @default(CUSTOMER) // Default role is CUSTOMER
   isActive      Boolean   @default(true) // To enable/disable user accounts
   emailVerified DateTime? // Timestamp when the email was verified
 
+  // Profile fields (moved from Profile table)
+  firstName      String
+  lastName       String?
+  phoneNumber    String?
+  address        String? // Could be expanded into structured address fields
+  profilePicture String? // URL to the user's profile picture
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Optional: Link to a profile for additional details
-  profile Profile?
-
-  // Optional: Add relations to other models if needed, e.g., orders for customers, products for sellers, etc.
-  // orders Order[] // Example for customer
-  // products Product[] // Example for seller
 
   // Relations required by @auth/prisma-adapter
   accounts     Account[]
@@ -61,23 +61,8 @@ model User {
   SalesMade    Sale[]         @relation("StaffSales") // Sales processed by this staff member
   Customer     Customer?
   Supplier     Supplier?
-}
 
-// Model for storing additional user profile information
-model Profile {
-  id             String  @id @default(cuid())
-  userId         String  @unique // One-to-one relation with User
-  firstName      String?
-  lastName       String?
-  phoneNumber    String?
-  address        String? // Could be expanded into structured address fields
-  profilePicture String? // URL to the user's profile picture
-
-  // Relation back to the User model
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade) // Cascade delete profile if user is deleted
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  @@map("users")
 }
 
 // Model for Session-Based Authentication

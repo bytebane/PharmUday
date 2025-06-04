@@ -101,12 +101,14 @@ export async function POST(req: Request) {
 			data: {
 				email,
 				name,
+				firstName: name.split(' ')[0] || '',
+				lastName: name.split(' ').slice(1).join(' ') || '',
 				passwordHash: hashedPassword,
 				role: roleToAssign as Role,
 				isActive: true,
 				emailVerified: new Date(),
 			},
-			select: { id: true, email: true, name: true, role: true },
+			select: { id: true, email: true, name: true, role: true, firstName: true, lastName: true },
 		})
 
 		// If user is CUSTOMER, create Customer entry

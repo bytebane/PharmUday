@@ -55,6 +55,9 @@ export async function POST(req: Request) {
 				data: {
 					email: body.email,
 					name: body.name,
+					firstName: body.firstName || '',
+					lastName: body.lastName || '',
+					phoneNumber: body.phone || '',
 					passwordHash: hashedPassword,
 					role: Role.SELLER,
 					isActive: true,
@@ -68,6 +71,7 @@ export async function POST(req: Request) {
 			data: {
 				...body,
 				userId,
+				contactPerson: body.contactPerson || '',
 			},
 		})
 

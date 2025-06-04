@@ -26,6 +26,8 @@ async function main() {
 			data: {
 				email: superAdminEmail,
 				name: superAdminName,
+				firstName: superAdminName.split(' ')[0],
+				lastName: superAdminName.split(' ').slice(1).join(' '),
 				passwordHash: hashedSuperAdminPassword,
 				role: Role.SUPER_ADMIN,
 				isActive: true,
@@ -51,6 +53,8 @@ async function main() {
 			data: {
 				email: adminEmail,
 				name: adminName,
+				firstName: adminName.split(' ')[0],
+				lastName: adminName.split(' ').slice(1).join(' '),
 				passwordHash: hashedAdminPassword,
 				role: Role.ADMIN,
 				isActive: true,
@@ -76,6 +80,8 @@ async function main() {
 			data: {
 				email: customerEmail,
 				name: customerName,
+				firstName: customerName.split(' ')[0],
+				lastName: customerName.split(' ').slice(1).join(' '),
 				passwordHash: hashedCustomerPassword,
 				role: Role.CUSTOMER,
 				isActive: true,
