@@ -51,6 +51,11 @@ FROM node:24-slim AS production
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Install OpenSSL and other required packages for production
+RUN apt-get update -y && \
+    apt-get install -y openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user and group for better security
 RUN addgroup appgroup && adduser --disabled-password --gecos "" --ingroup appgroup appuser
 
@@ -58,6 +63,9 @@ RUN addgroup appgroup && adduser --disabled-password --gecos "" --ingroup appgro
 COPY --from=builder --chown=appuser:appgroup /app/.next/standalone ./
 COPY --from=builder --chown=appuser:appgroup /app/public ./public
 COPY --from=builder --chown=appuser:appgroup /app/.next/static ./.next/static
+
+# Copy the generated Prisma client and engines
+COPY --from=builder --chown=appuser:appgroup /app/src/generated/prisma ./src/generated/prisma
 
 USER appuser
 EXPOSE 3000
