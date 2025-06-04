@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-
+import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
 import { supplierPatchSchema } from '@/lib/validations/supplier'
 import { Role } from '@/generated/prisma'
@@ -33,11 +33,52 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 		const { id } = await params
 		const json = await req.json()
-		const body = supplierPatchSchema.parse(json)
+		const { createUserAccount, defaultPassword, ...body } = json
+		const supplierData = supplierPatchSchema.parse(body)
+
+		let userId: string | undefined = undefined
+
+		// Handle user account creation if requested and supplier doesn't already have one
+		if (createUserAccount) {
+			// Check if supplier already has a user account
+			const existingSupplier = await db.supplier.findUnique({
+				where: { id },
+				select: { userId: true },
+			})
+
+			if (!existingSupplier?.userId) {
+				// Create user account for supplier
+				const hashedPassword = await bcrypt.hash(defaultPassword || 'changeme123', 10)
+
+				// Split name into first and last name if available
+				const nameParts = (supplierData.name || '').split(' ')
+				const firstName = nameParts[0] || ''
+				const lastName = nameParts.slice(1).join(' ') || ''
+
+				const user = await db.user.create({
+					data: {
+						email: supplierData.email || '',
+						name: supplierData.name || '',
+						firstName,
+						lastName,
+						phoneNumber: supplierData.phone || '',
+						address: supplierData.address || '',
+						passwordHash: hashedPassword,
+						role: Role.SELLER,
+						isActive: true,
+						emailVerified: new Date(),
+					},
+				})
+				userId = user.id
+			}
+		}
 
 		const updatedSupplier = await db.supplier.update({
 			where: { id: id },
-			data: body,
+			data: {
+				...supplierData,
+				...(userId && { userId }),
+			},
 		})
 
 		return NextResponse.json(updatedSupplier)

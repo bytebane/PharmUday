@@ -54,8 +54,8 @@ export function SupplierForm({ supplierData, onSuccess }: SupplierFormProps) {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					...values,
-					createUserAccount: !isEditing && createUserAccount, // Only allow on create
-					defaultPassword: !isEditing && createUserAccount ? defaultPassword : undefined,
+					createUserAccount: createUserAccount,
+					defaultPassword: createUserAccount ? defaultPassword : undefined,
 				}),
 			})
 			const result = await response.json()
@@ -176,8 +176,8 @@ export function SupplierForm({ supplierData, onSuccess }: SupplierFormProps) {
 					)}
 				/>
 
-				{/* User account creation section - only for new suppliers */}
-				{!isEditing && (
+				{/* User account creation section - for new suppliers or existing suppliers without user account */}
+				{(!isEditing || (isEditing && !supplierData?.userId)) && (
 					<div className='space-y-2'>
 						<label className='flex items-center gap-2'>
 							<input
@@ -185,7 +185,7 @@ export function SupplierForm({ supplierData, onSuccess }: SupplierFormProps) {
 								checked={createUserAccount}
 								onChange={e => setCreateUserAccount(e.target.checked)}
 							/>
-							Create user account for login
+							{isEditing ? 'Create user account for login' : 'Create user account for login'}
 						</label>
 						{createUserAccount && (
 							<div>

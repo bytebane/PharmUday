@@ -54,8 +54,8 @@ export function CustomerForm({ customerData, onSuccess }: CustomerFormProps) {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					...values,
-					createUserAccount: !isEditing && createUserAccount, // Only allow on create
-					defaultPassword: !isEditing && createUserAccount ? defaultPassword : undefined,
+					createUserAccount: createUserAccount, // Allow on both create and update
+					defaultPassword: createUserAccount ? defaultPassword : undefined,
 				}),
 			})
 			const result = await response.json()
@@ -156,8 +156,8 @@ export function CustomerForm({ customerData, onSuccess }: CustomerFormProps) {
 				/>
 				{/* Add userId field if you want to link to an existing User account from this form */}
 
-				{/* Create user account section */}
-				{!isEditing && (
+				{/* Create user account section - for new customers or existing customers without user account */}
+				{(!isEditing || (isEditing && !customerData?.userId)) && (
 					<div className='space-y-2'>
 						<label className='flex items-center gap-2'>
 							<input
@@ -165,7 +165,7 @@ export function CustomerForm({ customerData, onSuccess }: CustomerFormProps) {
 								checked={createUserAccount}
 								onChange={e => setCreateUserAccount(e.target.checked)}
 							/>
-							Create user account for login
+							{isEditing ? 'Create user account for login' : 'Create user account for login'}
 						</label>
 						{createUserAccount && (
 							<div>
