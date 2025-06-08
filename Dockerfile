@@ -6,28 +6,30 @@ FROM node:24-slim AS common_base
 RUN apt-get update -y && \
     apt-get install -y openssl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
+
 # Set the working directory to the application root
 WORKDIR /app
 
-# Install dependencies
-# (Copy these first to leverage Docker cache for dependencies)
+# Copy package files
 COPY package.json ./
-# Install only production dependencies
-RUN npm install
+
+# Install dependencies with retry logic
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --no-audit --no-fund --prefer-offline
 
 # Copy prisma schema and generate client
-# Adjust the path if your prisma schema is not in ./prisma
 COPY prisma ./prisma
-RUN npx prisma generate
+RUN --mount=type=cache,target=/root/.npm \
+    npx prisma generate
 
 # Copy the rest of the application code.
 # This is done in the base stage so builder can access all source files.
 COPY . .
 
 # ---- Development Stage ----
-# Used for local development with hot-reloading
 FROM common_base AS development
 ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Your Next.js application likely runs on port 3000
 EXPOSE 3000
@@ -37,9 +39,9 @@ EXPOSE 3000
 CMD ["npm", "run", "dev"]
 
 # ---- Builder Stage ----
-# Builds the Next.js application for production
 FROM common_base AS builder
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS=--max-old-space-size=2048
 
 # This will use the `output: 'standalone'` from next.config.js
@@ -50,6 +52,7 @@ RUN npm run build
 FROM node:24-slim AS production
 WORKDIR /app
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Install OpenSSL and other required packages for production
 RUN apt-get update -y && \

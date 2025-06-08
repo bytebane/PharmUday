@@ -6,6 +6,14 @@ const nextConfig: NextConfig = {
 	eslint: {
 		ignoreDuringBuilds: true,
 	},
+	poweredByHeader: false,
+	swcMinify: true,
+	reactStrictMode: true,
+	experimental: {
+		// Enable optimizations
+		optimizeCss: true,
+		scrollRestoration: true,
+	},
 }
 
 export default nextConfig
