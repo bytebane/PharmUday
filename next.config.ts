@@ -7,7 +7,6 @@ const nextConfig: NextConfig = {
 		ignoreDuringBuilds: true,
 	},
 	poweredByHeader: false,
-	swcMinify: true,
 	reactStrictMode: true,
 	experimental: {
 		// Enable optimizations

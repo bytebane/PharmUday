@@ -1,28 +1,30 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
 import { supplierPatchSchema } from '@/lib/validations/supplier'
 import { Role } from '@/generated/prisma'
 import { authorize } from '@/lib/utils/auth-utils'
+import * as argon2 from 'argon2'
+import { esClient } from '@/lib/elastic'
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	try {
-		const { id } = await params
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
 
+		const { id } = await params
 		const supplier = await db.supplier.findUnique({
-			where: { id: id },
-			// include: { Item: true } // Include related items if needed
+			where: { id },
 		})
 
 		if (!supplier) {
-			return new NextResponse('Supplier not found', { status: 404 })
+			return NextResponse.json({ message: 'Supplier not found' }, { status: 404 })
 		}
 
 		return NextResponse.json(supplier)
 	} catch (error) {
-		console.error('[SUPPLIER_GET]', error)
-		return new NextResponse('Internal Server Error', { status: 500 })
+		console.error('[SUPPLIERS_GET]', error)
+		return NextResponse.json({ message: 'Internal Server Error', error: error instanceof Error ? error.message : String(error) }, { status: 500 })
 	}
 }
 
@@ -48,7 +50,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 			if (!existingSupplier?.userId) {
 				// Create user account for supplier
-				const hashedPassword = await bcrypt.hash(defaultPassword || 'changeme123', 10)
+				const hashedPassword = await argon2.hash(defaultPassword || 'changeme123', {
+					type: argon2.argon2id,
+					memoryCost: 2 ** 16,
+					timeCost: 3,
+					parallelism: 1,
+				})
 
 				// Split name into first and last name if available
 				const nameParts = (supplierData.name || '').split(' ')
@@ -81,6 +88,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 			},
 		})
 
+		// Update the item in Elasticsearch
+		await esClient.update({
+			index: 'items',
+			id: updatedSupplier.id,
+			doc: {
+				...updatedSupplier,
+			},
+		})
+
 		return NextResponse.json(updatedSupplier)
 	} catch (error) {
 		if (error instanceof z.ZodError) {
@@ -108,5 +124,70 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 	} catch (error) {
 		console.error('[SUPPLIER_DELETE]', error)
 		return new NextResponse('Internal Server Error', { status: 500 })
+	}
+}
+
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+	try {
+		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
+		if (response) return response
+
+		const { id } = await params
+		const json = await req.json()
+		const { createUserAccount, defaultPassword, ...body } = json
+
+		const supplierValidation = supplierPatchSchema.safeParse(body)
+		if (!supplierValidation.success) {
+			return NextResponse.json({ issues: supplierValidation.error.issues }, { status: 422 })
+		}
+
+		let userId: string | undefined = undefined
+
+		if (createUserAccount) {
+			// Create user account for supplier
+			const hashedPassword = await argon2.hash(defaultPassword || 'changeme123', {
+				type: argon2.argon2id,
+				memoryCost: 2 ** 16,
+				timeCost: 3,
+				parallelism: 1,
+			})
+			const user = await db.user.create({
+				data: {
+					email: body.email,
+					name: body.name,
+					firstName: body.firstName || '',
+					lastName: body.lastName || '',
+					phoneNumber: body.phone,
+					address: body.address || '',
+					passwordHash: hashedPassword,
+					role: Role.SELLER,
+					isActive: true,
+					emailVerified: new Date(),
+				},
+			})
+			userId = user.id
+		}
+
+		const updatedSupplier = await db.supplier.update({
+			where: { id },
+			data: {
+				...body,
+				userId,
+			},
+		})
+
+		// Update the item in Elasticsearch
+		await esClient.update({
+			index: 'items',
+			id: updatedSupplier.id,
+			doc: {
+				...updatedSupplier,
+			},
+		})
+
+		return NextResponse.json(updatedSupplier)
+	} catch (error) {
+		console.error('[SUPPLIERS_PUT]', error)
+		return NextResponse.json({ message: 'Internal Server Error', error: error instanceof Error ? error.message : String(error) }, { status: 500 })
 	}
 }
