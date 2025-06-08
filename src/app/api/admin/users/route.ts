@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { Role } from '@/generated/prisma'
 import { authorize } from '@/lib/utils/auth-utils' // Import the new utility
-import bcrypt from 'bcryptjs'
+import * as argon2 from 'argon2'
 
 const paginationSchema = z.object({
 	page: z.coerce.number().min(1).default(1),
@@ -94,7 +94,12 @@ export async function POST(req: Request) {
 			return NextResponse.json({ message: 'User with this email already exists.' }, { status: 409 })
 		}
 
-		const hashedPassword = await bcrypt.hash(password, 10)
+		const hashedPassword = await argon2.hash(password, {
+			type: argon2.argon2id,
+			memoryCost: 2 ** 16,
+			timeCost: 3,
+			parallelism: 1,
+		})
 
 		// Create user
 		const newUser = await db.user.create({
@@ -137,11 +142,7 @@ export async function POST(req: Request) {
 
 		return NextResponse.json(newUser, { status: 201 })
 	} catch (error) {
-		console.error('User creation error:', error)
-		if (error instanceof SyntaxError) {
-			// JSON parsing error
-			return NextResponse.json({ message: 'Invalid request body.' }, { status: 400 })
-		}
+		console.error('[USERS_POST]', error)
 		return NextResponse.json({ message: 'Internal server error' }, { status: 500 })
 	}
 }

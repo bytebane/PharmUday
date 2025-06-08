@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
+import * as argon2 from 'argon2'
 import { db as prisma } from '@/lib/db'
 import { Role } from '@/generated/prisma'
 import { authorize, AuthenticatedUser } from '@/lib/utils/auth-utils'
@@ -87,6 +87,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ userId: 
 			}
 		}
 
+		// Prevent modifying SUPER_ADMIN by non-SUPER_ADMIN
+		if (userToUpdate.role === Role.SUPER_ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
+			return NextResponse.json({ message: 'Only Super Admins can modify other Super Admins.' }, { status: 403 })
+		}
+
 		// Prevent assigning SUPER_ADMIN role by non-SUPER_ADMIN
 		if (roleToAssign === Role.SUPER_ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
 			return NextResponse.json({ message: 'Only Super Admins can assign the Super Admin role.' }, { status: 403 })
@@ -104,7 +109,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ userId: 
 		if (roleToAssign) updateData.role = roleToAssign as Role
 		if (typeof isActive === 'boolean') updateData.isActive = isActive
 		if (password) {
-			updateData.passwordHash = await bcrypt.hash(password, 10)
+			updateData.passwordHash = await argon2.hash(password, {
+				type: argon2.argon2id,
+				memoryCost: 2 ** 16,
+				timeCost: 3,
+				parallelism: 1,
+			})
 		}
 
 		const updatedUser = await prisma.user.update({

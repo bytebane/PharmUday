@@ -1,5 +1,5 @@
 import { PrismaClient, Role } from '../src/generated/prisma'
-import bcrypt from 'bcryptjs'
+import * as argon2 from 'argon2'
 import { categoriesData, itemsData, reportCategoriesData, suppliersData } from './constants'
 
 const prisma = new PrismaClient()
@@ -21,7 +21,12 @@ async function main() {
 	})
 
 	if (!existingSuperAdmin) {
-		const hashedSuperAdminPassword = await bcrypt.hash(superAdminPassword, 10)
+		const hashedSuperAdminPassword = await argon2.hash(superAdminPassword, {
+			type: argon2.argon2id,
+			memoryCost: 2 ** 16,
+			timeCost: 3,
+			parallelism: 1,
+		})
 		const superAdmin = await prisma.user.create({
 			data: {
 				email: superAdminEmail,
@@ -48,7 +53,12 @@ async function main() {
 	}
 	const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } })
 	if (!existingAdmin) {
-		const hashedAdminPassword = await bcrypt.hash(adminPassword, 10)
+		const hashedAdminPassword = await argon2.hash(adminPassword, {
+			type: argon2.argon2id,
+			memoryCost: 2 ** 16,
+			timeCost: 3,
+			parallelism: 1,
+		})
 		await prisma.user.create({
 			data: {
 				email: adminEmail,
@@ -75,7 +85,12 @@ async function main() {
 	}
 	const existingCustomer = await prisma.user.findUnique({ where: { email: customerEmail } })
 	if (!existingCustomer) {
-		const hashedCustomerPassword = await bcrypt.hash(customerPassword, 10)
+		const hashedCustomerPassword = await argon2.hash(customerPassword, {
+			type: argon2.argon2id,
+			memoryCost: 2 ** 16,
+			timeCost: 3,
+			parallelism: 1,
+		})
 		await prisma.user.create({
 			data: {
 				email: customerEmail,
@@ -86,17 +101,6 @@ async function main() {
 				role: Role.CUSTOMER,
 				isActive: true,
 				emailVerified: new Date(),
-			},
-		})
-		await prisma.customer.create({
-			data: {
-				email: customerEmail,
-				name: customerName,
-				phone: '1234567890', // Default phone number
-				address: '123 Customer St, City, Country', // Default address
-				user: {
-					connect: { email: customerEmail },
-				},
 			},
 		})
 		console.log(`Customer user created with email ${customerEmail}`)

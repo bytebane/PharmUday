@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { Role } from '@/generated/prisma'
-import bcrypt from 'bcryptjs'
 import { authorize } from '@/lib/utils/auth-utils'
+import * as argon2 from 'argon2'
 
 const paginationSchema = z.object({
 	page: z.coerce.number().min(1).default(1),
@@ -50,7 +50,12 @@ export async function POST(req: Request) {
 		let userId: string | undefined = undefined
 
 		if (createUserAccount) {
-			const hashedPassword = await bcrypt.hash(defaultPassword || 'changeme123', 10)
+			const hashedPassword = await argon2.hash(defaultPassword || 'changeme123', {
+				type: argon2.argon2id,
+				memoryCost: 2 ** 16,
+				timeCost: 3,
+				parallelism: 1,
+			})
 			const newUser = await db.user.create({
 				data: {
 					email: body.email,

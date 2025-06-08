@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import bcrypt from 'bcryptjs'
+import * as argon2 from 'argon2'
 import { z } from 'zod'
 
 import { authOptions } from '@/lib/auth'
@@ -122,10 +122,15 @@ export async function PUT(req: Request) {
 				where: { id: session.user.id },
 				select: { passwordHash: true },
 			})
-			if (!user || !user.passwordHash || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+			if (!user || !user.passwordHash || !(await argon2.verify(user.passwordHash, currentPassword))) {
 				return NextResponse.json({ message: 'Incorrect current password' }, { status: 400 })
 			}
-			updateData.passwordHash = await bcrypt.hash(newPassword, 10)
+			updateData.passwordHash = await argon2.hash(newPassword, {
+				type: argon2.argon2id,
+				memoryCost: 2 ** 16,
+				timeCost: 3,
+				parallelism: 1,
+			})
 		}
 
 		await db.user.update({ where: { id: session.user.id }, data: updateData })
