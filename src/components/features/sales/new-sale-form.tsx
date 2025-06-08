@@ -61,7 +61,6 @@ function getCustomerDisplayName(customer: { name: string; phone?: string | null;
 
 // Utility: Render item display name
 function getItemDisplayName(item: { name: string; price: number; expiry_date?: Date | null }) {
-	// return item.generic_name ? `${item.name} (${item.generic_name})` : item.name
 	return `${item.name} - ₹${item.price.toFixed(2)} ${item.expiry_date ? `(Exp: ${new Date(item.expiry_date).toLocaleDateString()})` : ''}`
 }
 

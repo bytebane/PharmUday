@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { toast } from 'sonner' // Assuming you use sonner for toasts
+import { toast } from 'sonner'
 
 export function SignupForm() {
 	const router = useRouter()
@@ -30,31 +30,25 @@ export function SignupForm() {
 		setIsLoading(true)
 
 		try {
-			const data1 = JSON.stringify({
+			const data = JSON.stringify({
 				email,
 				password,
 				firstName, // Send optional fields
 				lastName,
 			})
 
-			console.log('Sending data:', data1)
 			const response = await fetch('/api/signup', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({
-					email,
-					password,
-					firstName, // Send optional fields
-					lastName,
-				}),
+				body: data,
 			})
 
-			const data = await response.json()
+			const res = await response.json()
 
 			if (!response.ok) {
-				throw new Error(data.message || 'Something went wrong')
+				throw new Error(res.message || 'Something went wrong')
 			}
 
 			// Signup successful
@@ -62,7 +56,6 @@ export function SignupForm() {
 			router.push('/login') // Redirect to login page after successful signup
 		} catch (err: any) {
 			setError(err.message)
-			console.log(err.message)
 			toast.error(err.message || 'Signup failed.')
 		} finally {
 			setIsLoading(false)

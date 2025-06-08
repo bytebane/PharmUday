@@ -159,8 +159,6 @@ export async function POST(req: NextRequest) {
 			const grandTotal = subTotal - (body.totalDiscount || 0) + (body.totalTax || 0)
 
 			// 4. Create Sale record
-			console.log('Inside transaction, typeof prisma:', typeof prisma)
-			console.log('Inside transaction, prisma object:', prisma ? Object.keys(prisma) : null)
 			const newSale = await prisma.sale.create({
 				data: {
 					staffId: user!.id,

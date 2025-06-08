@@ -102,11 +102,6 @@ export async function GET(req: Request) {
 				db.item.count(),
 			])
 		}
-		// show all fields of an item
-		console.log(
-			'Demo items:',
-			items.slice(0, 5).map(item => ({ item })),
-		)
 
 		return NextResponse.json({ items, total })
 	} catch (error) {
