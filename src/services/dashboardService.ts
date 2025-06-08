@@ -15,6 +15,7 @@ export interface DashboardStats {
 	}
 	totalCustomerCount: number
 	allTimeSales: { totalAmount: number; transactionCount: number }
+	chartData: { date: string; amount: number }[]
 }
 
 export async function getDashboardStatsFromDb(): Promise<DashboardStats> {
@@ -77,10 +78,38 @@ export async function getDashboardStatsFromDb(): Promise<DashboardStats> {
 
 	const totalCustomerCount = await db.customer.count()
 
+	// Get daily sales data for the last year
+	const oneYearAgo = new Date()
+	oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+	oneYearAgo.setHours(0, 0, 0, 0)
+
+	const dailySales = await db.sale.groupBy({
+		by: ['saleDate'],
+		where: {
+			saleDate: {
+				gte: oneYearAgo,
+				lt: new Date(),
+			},
+		},
+		_sum: {
+			grandTotal: true,
+		},
+		orderBy: {
+			saleDate: 'asc',
+		},
+	})
+
+	// Format the data for the chart
+	const chartData = dailySales.map(sale => ({
+		date: sale.saleDate.toISOString(),
+		amount: sale._sum.grandTotal || 0,
+	}))
+
 	return {
 		itemStats,
 		salesStats,
 		totalCustomerCount,
 		allTimeSales: allTimeSalesStats,
+		chartData,
 	}
 }

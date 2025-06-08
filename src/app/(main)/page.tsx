@@ -1,21 +1,23 @@
 import { getCurrentUser } from '@/lib/auth' // To get the current user's role
 import { Role } from '@/generated/prisma' // Import Role enum
 import { StatCard } from '@/components/custom/stat-card'
+import { SalesChart } from '@/components/custom/sales-chart'
 import { getDashboardStatsFromDb } from '@/services/dashboardService'
 
 interface DashboardStats {
 	itemStats: {
 		expiringSoonCount: number
 		outOfStockCount: number
-		totalItemCount: number // <-- Add this line
+		totalItemCount: number
 	}
 	salesStats: {
 		today: { totalAmount: number; transactionCount: number }
 		thisMonth: { totalAmount: number; transactionCount: number }
 		thisYear: { totalAmount: number; transactionCount: number }
 	}
-	totalCustomerCount: number // <-- Add this line
-	allTimeSales: { totalAmount: number; transactionCount: number } // <-- Add this line
+	totalCustomerCount: number
+	allTimeSales: { totalAmount: number; transactionCount: number }
+	chartData: { date: string; amount: number }[]
 }
 
 export default async function DashboardPage() {
@@ -39,76 +41,79 @@ export default async function DashboardPage() {
 			)
 		}
 
-		const { itemStats, salesStats, totalCustomerCount, allTimeSales } = stats
+		const { itemStats, salesStats, totalCustomerCount, allTimeSales, chartData } = stats
 
 		return (
 			<div className='container mx-auto p-4 md:p-8'>
-				<div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-					{/* Item Stats */}
-					<StatCard
-						title='Expiring Soon'
-						value={itemStats.expiringSoonCount}
-						iconName='AlertTriangle'
-						description='Items expiring in next 30 days'
-						link='/inventory/items?status=expiring_soon'
-						linkText='View Items'
-					/>
-					<StatCard
-						title='Out of Stock'
-						value={itemStats.outOfStockCount}
-						iconName='ArchiveX'
-						description='Items with zero quantity'
-						link='/inventory/items?status=out_of_stock'
-						linkText='View Items'
-					/>
-					<StatCard
-						title='Total Items'
-						value={itemStats.totalItemCount}
-						iconName='Package'
-						description='Overall item count'
-						link='/inventory/items'
-						linkText='View Items'
-					/>
+				<div className='grid gap-4'>
+					<SalesChart data={chartData} />
+					<div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+						{/* Item Stats */}
+						<StatCard
+							title='Expiring Soon'
+							value={itemStats.expiringSoonCount}
+							iconName='AlertTriangle'
+							description='Items expiring in next 30 days'
+							link='/inventory/items?status=expiring_soon'
+							linkText='View Items'
+						/>
+						<StatCard
+							title='Out of Stock'
+							value={itemStats.outOfStockCount}
+							iconName='ArchiveX'
+							description='Items with zero quantity'
+							link='/inventory/items?status=out_of_stock'
+							linkText='View Items'
+						/>
+						<StatCard
+							title='Total Items'
+							value={itemStats.totalItemCount}
+							iconName='Package'
+							description='Overall item count'
+							link='/inventory/items'
+							linkText='View Items'
+						/>
 
-					{/* Sales Stats */}
-					<StatCard
-						title="Today's Sales"
-						value={`$${salesStats.today.totalAmount.toFixed(2)}`}
-						iconName='DollarSign'
-						description={`${salesStats.today.transactionCount} transactions`}
-						link='/sales/history?period=today'
-						linkText='View Sales'
-					/>
-					<StatCard
-						title="This Month's Sales"
-						value={`$${salesStats.thisMonth.totalAmount.toFixed(2)}`}
-						iconName='CalendarDays'
-						description={`${salesStats.thisMonth.transactionCount} transactions`}
-						link='/sales/history?period=this_month'
-						linkText='View Sales'
-					/>
-					<StatCard
-						title="This Year's Sales"
-						value={`$${salesStats.thisYear.totalAmount.toFixed(2)}`}
-						iconName='CalendarRange'
-						description={`${salesStats.thisYear.transactionCount} transactions`}
-						link='/sales/history?period=this_year'
-						linkText='View Sales'
-					/>
-					<StatCard
-						title='All-Time Sales'
-						value={`$${allTimeSales.totalAmount.toFixed(2)}`}
-						iconName='TrendingUp'
-						description={`${allTimeSales.transactionCount} transactions`}
-						link='/sales/history?period=all_time' // Or simply /sales/history if 'all_time' is default
-						linkText='View Sales'
-					/>
-					<StatCard
-						title='Total Customers'
-						value={totalCustomerCount}
-						iconName='ShoppingCart'
-						description='Registered customers'
-					/>
+						{/* Sales Stats */}
+						<StatCard
+							title="Today's Sales"
+							value={`₹${salesStats.today.totalAmount.toFixed(2)}`}
+							iconName='DollarSign'
+							description={`${salesStats.today.transactionCount} transactions`}
+							link='/sales/history?period=today'
+							linkText='View Sales'
+						/>
+						<StatCard
+							title="This Month's Sales"
+							value={`₹${salesStats.thisMonth.totalAmount.toFixed(2)}`}
+							iconName='CalendarDays'
+							description={`${salesStats.thisMonth.transactionCount} transactions`}
+							link='/sales/history?period=this_month'
+							linkText='View Sales'
+						/>
+						<StatCard
+							title="This Year's Sales"
+							value={`₹${salesStats.thisYear.totalAmount.toFixed(2)}`}
+							iconName='CalendarRange'
+							description={`${salesStats.thisYear.transactionCount} transactions`}
+							link='/sales/history?period=this_year'
+							linkText='View Sales'
+						/>
+						<StatCard
+							title='All-Time Sales'
+							value={`₹${allTimeSales.totalAmount.toFixed(2)}`}
+							iconName='TrendingUp'
+							description={`${allTimeSales.transactionCount} transactions`}
+							link='/sales/history?period=all_time'
+							linkText='View Sales'
+						/>
+						<StatCard
+							title='Total Customers'
+							value={totalCustomerCount}
+							iconName='ShoppingCart'
+							description='Registered customers'
+						/>
+					</div>
 				</div>
 			</div>
 		)
