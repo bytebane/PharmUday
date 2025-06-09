@@ -2,7 +2,6 @@
 
 import * as React from 'react' // Import React
 import { signIn } from 'next-auth/react' // Import signIn
-import { useRouter } from 'next/navigation' // Import useRouter
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -11,7 +10,6 @@ import { toast } from 'sonner' // Import toast for feedback
 import Link from 'next/link' // Use Next.js Link for navigation
 
 export function LoginForm() {
-	const router = useRouter()
 	const [email, setEmail] = React.useState('')
 	const [password, setPassword] = React.useState('')
 	const [isLoading, setIsLoading] = React.useState(false)
@@ -24,22 +22,15 @@ export function LoginForm() {
 
 		try {
 			const result = await signIn('credentials', {
-				redirect: false, // Prevent NextAuth from automatically redirecting, handle manually
 				email: email,
 				password: password,
+				callbackUrl: '/', // Default redirect URL
 			})
 
 			if (result?.error) {
 				// Handle specific errors or show a generic message
 				setError(result.error === 'CredentialsSignin' ? 'Invalid email or password.' : 'Login failed. Please try again.')
 				toast.error(result.error === 'CredentialsSignin' ? 'Invalid email or password.' : 'Login failed.')
-			} else if (result?.ok) {
-				// Login successful
-				toast.success('Login successful!')
-				// Redirect to dashboard or intended page
-				// router.push(result.url || '/dashboard'); // Use result.url or a default
-				router.push('/') // Redirect to dashboard for now
-				router.refresh() // Optional: Refresh server components after login
 			}
 		} catch (err) {
 			// Catch any unexpected errors during the signIn process
