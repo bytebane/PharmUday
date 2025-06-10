@@ -5,7 +5,7 @@ export function useRefreshToken() {
 	const { data: session, update } = useSession()
 
 	useEffect(() => {
-		if (!session?.refreshToken) return
+		if (!session?.refreshToken || !session?.deviceId) return
 
 		// Refresh token 14 minutes before expiration (1 minute before JWT expires)
 		const refreshInterval = setInterval(
@@ -28,10 +28,10 @@ export function useRefreshToken() {
 					console.error('Error refreshing token:', error)
 				}
 			},
-			30 * 1000,
-			// 14 * 60 * 1000,
-		) // 14 minutes
+			30 * 1000, // 30 seconds for testing
+			// 14 * 60 * 1000, // 14 minutes in production
+		)
 
 		return () => clearInterval(refreshInterval)
-	}, [session?.refreshToken, update])
+	}, [session?.refreshToken, session?.deviceId, update])
 }

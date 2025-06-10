@@ -83,6 +83,8 @@ model RefreshToken {
   id        String   @id @default(cuid())
   tokenHash String   @unique // Store a hash of the refresh token, not the token itself
   userId    String // Links the token to a User
+  deviceId  String // Unique identifier for the device
+  deviceInfo Json? // Store device information (browser, OS, etc.)
   expires   DateTime // When the refresh token expires
   revoked   Boolean  @default(false) // Flag to indicate if the token has been revoked
 
@@ -90,6 +92,8 @@ model RefreshToken {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId, deviceId]) // Add index for faster queries
 }
 
 // Model required by @auth/prisma-adapter for linking OAuth accounts
