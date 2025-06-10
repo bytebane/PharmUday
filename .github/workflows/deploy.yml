@@ -55,6 +55,13 @@ jobs:
                   ELASTICSEARCH_URL=${{ secrets.ELASTICSEARCH_URL }}
                   ELASTICSEARCH_USERNAME=${{ secrets.ELASTICSEARCH_USERNAME }}
                   ELASTICSEARCH_PASSWORD=${{ secrets.ELASTICSEARCH_PASSWORD }}
+                  SESSION_MAX_AGE=${{ secrets.SESSION_MAX_AGE }}
+                  JWT_MAX_AGE=${{ secrets.JWT_MAX_AGE }}
+                  REFRESH_TOKEN_MAX_AGE=${{ secrets.REFRESH_TOKEN_MAX_AGE }}
+                  REFRESH_TOKEN_EXPIRY_THRESHOLD=${{ secrets.REFRESH_TOKEN_EXPIRY_THRESHOLD }}
+                  MAX_CONCURRENT_SESSIONS=${{ secrets.MAX_CONCURRENT_SESSIONS }}
+                  REFRESH_TOKEN_RATE_LIMIT=${{ secrets.REFRESH_TOKEN_RATE_LIMIT }}
+                  REFRESH_TOKEN_RATE_WINDOW=${{ secrets.REFRESH_TOKEN_RATE_WINDOW }}
                   EOF
 
             - name: Setup server environment
