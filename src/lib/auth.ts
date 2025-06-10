@@ -63,15 +63,12 @@ function generateDeviceId(): string {
 
 // Helper function to generate a refresh token
 async function generateRefreshToken(userId: string, deviceId: string, userAgent: string) {
-	console.log(`[RefreshToken] Generating new token for user ${userId}, device ${deviceId}`)
-
 	// Clean up expired tokens
 	const expiredTokens = await db.refreshToken.deleteMany({
 		where: {
 			OR: [{ expires: { lt: new Date() } }, { revoked: true }],
 		},
 	})
-	console.log(`[RefreshToken] Cleaned up ${expiredTokens.count} expired/revoked tokens`)
 
 	// Only revoke expired tokens for this device
 	const revokedTokens = await db.refreshToken.updateMany({
@@ -85,7 +82,6 @@ async function generateRefreshToken(userId: string, deviceId: string, userAgent:
 			revoked: true,
 		},
 	})
-	console.log(`[RefreshToken] Revoked ${revokedTokens.count} expired tokens for device ${deviceId}`)
 
 	// Check if user has reached maximum concurrent sessions
 	const activeTokens = await db.refreshToken.count({
@@ -97,7 +93,6 @@ async function generateRefreshToken(userId: string, deviceId: string, userAgent:
 	})
 
 	if (activeTokens >= MAX_CONCURRENT_SESSIONS) {
-		console.log(`[RefreshToken] User ${userId} has reached maximum concurrent sessions`)
 		throw new Error('Maximum number of concurrent sessions reached')
 	}
 
@@ -121,22 +116,17 @@ async function generateRefreshToken(userId: string, deviceId: string, userAgent:
 			expires,
 		},
 	})
-
-	console.log(`[RefreshToken] Created new token ${newToken.id} for user ${userId}, device ${deviceId}, expires at ${expires}`)
 	return token
 }
 
 // Helper function to verify a refresh token
 async function verifyRefreshToken(token: string, userId: string, deviceId: string) {
-	console.log(`[RefreshToken] Verifying token for user ${userId}, device ${deviceId}`)
-
 	// Clean up expired tokens
 	const expiredTokens = await db.refreshToken.deleteMany({
 		where: {
 			OR: [{ expires: { lt: new Date() } }, { revoked: true }],
 		},
 	})
-	console.log(`[RefreshToken] Cleaned up ${expiredTokens.count} expired/revoked tokens`)
 
 	// Find the token for this specific device
 	const refreshToken = await db.refreshToken.findFirst({
@@ -149,13 +139,11 @@ async function verifyRefreshToken(token: string, userId: string, deviceId: strin
 	})
 
 	if (!refreshToken) {
-		console.log(`[RefreshToken] No valid token found for user ${userId}, device ${deviceId}`)
 		return false
 	}
 
 	const isValid = await argon2.verify(refreshToken.tokenHash, token)
 	if (!isValid) {
-		console.log(`[RefreshToken] Token is invalid for user ${userId}, device ${deviceId}`)
 		await db.refreshToken.update({
 			where: { id: refreshToken.id },
 			data: { revoked: true },
@@ -263,11 +251,8 @@ export const getCurrentUser = async (): Promise<Session['user'] | null> => {
 	// Adjust the return type if your session callback structure is different
 	return session?.user ?? null
 }
-
 // Helper function to refresh the session using a refresh token
 export async function refreshSession(refreshToken: string, userId: string, deviceId: string) {
-	console.log(`[RefreshSession] Attempting to refresh session for user ${userId}, device ${deviceId}`)
-
 	// Find the current refresh token
 	const currentToken = await db.refreshToken.findFirst({
 		where: {
@@ -282,14 +267,12 @@ export async function refreshSession(refreshToken: string, userId: string, devic
 	})
 
 	if (!currentToken) {
-		console.log(`[RefreshSession] No valid token found for user ${userId}, device ${deviceId}`)
 		return null
 	}
 
 	// Verify the current token
 	const isValid = await argon2.verify(currentToken.tokenHash, refreshToken)
 	if (!isValid) {
-		console.log(`[RefreshSession] Invalid refresh token for user ${userId}, device ${deviceId}`)
 		await db.refreshToken.update({
 			where: { id: currentToken.id },
 			data: { revoked: true },
@@ -304,7 +287,6 @@ export async function refreshSession(refreshToken: string, userId: string, devic
 	if (isExpiringSoon) {
 		// Generate a new refresh token only if the current one is about to expire
 		newRefreshToken = await generateRefreshToken(userId, deviceId, 'refresh')
-		console.log(`[RefreshSession] Generated new refresh token for user ${userId}, device ${deviceId}`)
 	}
 
 	// Get the user
@@ -323,11 +305,9 @@ export async function refreshSession(refreshToken: string, userId: string, devic
 	})
 
 	if (!user) {
-		console.log(`[RefreshSession] User ${userId} not found`)
 		return null
 	}
 
-	console.log(`[RefreshSession] Successfully refreshed session for user ${userId}, device ${deviceId}`)
 	return {
 		user,
 		refreshToken: newRefreshToken,

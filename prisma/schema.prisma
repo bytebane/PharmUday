@@ -35,44 +35,36 @@ enum PaymentMethod {
 
 // Model for storing core user authentication data
 model User {
-  id            String    @id @default(cuid()) // Using CUID for unique IDs
-  email         String    @unique // Email must be unique for login
-  name          String // Full name of the user
-  passwordHash  String? // Store the hashed password, optional for OAuth users
-  role          Role      @default(CUSTOMER) // Default role is CUSTOMER
-  isActive      Boolean   @default(true) // To enable/disable user accounts
-  emailVerified DateTime? // Timestamp when the email was verified
-
-  // Profile fields (moved from Profile table)
-  firstName      String
-  lastName       String?
-  phoneNumber    String?
-  address        String? // Could be expanded into structured address fields
-  profilePicture String? // URL to the user's profile picture
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role
+  firstName     String?
+  lastName      String?
+  phoneNumber   String?
+  address       String?
+  passwordHash  String?
+  isActive      Boolean   @default(true)
+  accounts      Account[]
+  sessions      Session[]
+  refreshTokens RefreshToken[]
+  reports       Report[]
+  salesMade     Sale[]    @relation("StaffSales")
+  customer      Customer?
+  supplier      Supplier?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Relations required by @auth/prisma-adapter
-  accounts     Account[]
-  Session      Session[]
-  RefreshToken RefreshToken[]
-  Report       Report[]
-  SalesMade    Sale[]         @relation("StaffSales") // Sales processed by this staff member
-  Customer     Customer?
-  Supplier     Supplier?
-
-  @@map("users")
 }
 
 // Model for Session-Based Authentication
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique // The token stored in the user's cookie
-  userId       String // Links the session to a User
-  expires      DateTime // When the session expires
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -80,49 +72,50 @@ model Session {
 
 // Model for storing JWT Refresh Tokens
 model RefreshToken {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique // Store a hash of the refresh token, not the token itself
-  userId    String // Links the token to a User
-  deviceId  String // Unique identifier for the device
-  deviceInfo Json? // Store device information (browser, OS, etc.)
-  expires   DateTime // When the refresh token expires
-  revoked   Boolean  @default(false) // Flag to indicate if the token has been revoked
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  userId      String
+  deviceId    String
+  deviceInfo  Json
+  revoked     Boolean  @default(false)
+  expires     DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId, deviceId]) // Add index for faster queries
+  @@index([userId, deviceId])
+  @@index([expires])
 }
 
 // Model required by @auth/prisma-adapter for linking OAuth accounts
 model Account {
-  id                String  @id @default(cuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([provider, providerAccountId])
+  @@id([provider, providerAccountId])
 }
 
 // Model required by @auth/prisma-adapter for email verification tokens
 model VerificationToken {
   identifier String
-  token      String   @unique
+  token      String
   expires    DateTime
 
-  @@unique([identifier, token])
+  @@id([identifier, token])
 }
 
 // Model for Inventory Categories
