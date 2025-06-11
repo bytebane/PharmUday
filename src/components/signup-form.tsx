@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 
@@ -109,9 +110,8 @@ export function SignupForm() {
 					</div>
 					<div className='grid gap-2'>
 						<Label htmlFor='password'>Password</Label>
-						<Input
+						<PasswordInput
 							id='password'
-							type='password'
 							required
 							minLength={8}
 							value={password}
@@ -121,9 +121,8 @@ export function SignupForm() {
 					</div>
 					<div className='grid gap-2'>
 						<Label htmlFor='confirm-password'>Confirm Password</Label>
-						<Input
+						<PasswordInput
 							id='confirm-password'
-							type='password'
 							required
 							value={confirmPassword}
 							onChange={e => setConfirmPassword(e.target.value)}

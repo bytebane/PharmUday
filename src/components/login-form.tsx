@@ -2,10 +2,12 @@
 
 import * as React from 'react' // Import React
 import { signIn } from 'next-auth/react' // Import signIn
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PasswordInput } from '@/components/ui/password-input'
 import { toast } from 'sonner' // Import toast for feedback
 import Link from 'next/link' // Use Next.js Link for navigation
 
@@ -14,6 +16,14 @@ export function LoginForm() {
 	const [password, setPassword] = React.useState('')
 	const [isLoading, setIsLoading] = React.useState(false)
 	const [error, setError] = React.useState<string | null>(null)
+	const searchParams = useSearchParams()
+
+	// Show error toast when error param is present
+	React.useEffect(() => {
+		if (error) {
+			toast.error(error)
+		}
+	}, [error])
 
 	const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault()
@@ -25,12 +35,16 @@ export function LoginForm() {
 				email: email,
 				password: password,
 				callbackUrl: '/', // Default redirect URL
+				redirect: false, // Prevent automatic redirect
 			})
 
 			if (result?.error) {
-				// Handle specific errors or show a generic message
-				setError(result.error === 'CredentialsSignin' ? 'Invalid email or password.' : 'Login failed. Please try again.')
-				toast.error(result.error === 'CredentialsSignin' ? 'Invalid email or password.' : 'Login failed.')
+				// Display the specific error message from the authentication system
+				setError(result.error)
+				toast.error(result.error)
+			} else if (result?.ok) {
+				// If login is successful, redirect to the callback URL
+				window.location.href = result.url || '/'
 			}
 		} catch (err) {
 			// Catch any unexpected errors during the signIn process
@@ -73,9 +87,8 @@ export function LoginForm() {
 								Forgot your password?
 							</Link>
 						</div>
-						<Input
+						<PasswordInput
 							id='password'
-							type='password'
 							required
 							value={password}
 							onChange={e => setPassword(e.target.value)}

@@ -165,33 +165,41 @@ export const authOptions: NextAuthOptions = {
 			},
 			async authorize(credentials, req) {
 				if (!credentials?.email || !credentials.password) {
-					return null // Missing credentials
+					throw new Error('Please enter both email and password')
 				}
 
 				const user = await db.user.findUnique({
 					where: { email: credentials.email },
 				})
 
-				// Check if user exists and password is correct
-				if (user && user.passwordHash && (await comparePassword(credentials.password, user.passwordHash))) {
-					const deviceId = generateDeviceId()
-					const refreshToken = await generateRefreshToken(user.id, deviceId, req.headers?.['user-agent'] || 'unknown')
+				if (!user) {
+					throw new Error('No user found with this email')
+				}
 
-					// Return user object that matches the session/JWT structure
-					return {
-						id: user.id,
-						email: user.email,
-						name: user.name,
-						role: user.role,
-						firstName: user.firstName,
-						lastName: user.lastName,
-						phoneNumber: user.phoneNumber,
-						address: user.address,
-						refreshToken, // Include refresh token in the user object
-						deviceId,
-					}
-				} else {
-					return null // Authentication failed
+				if (!user.passwordHash) {
+					throw new Error('Invalid account configuration')
+				}
+
+				const isPasswordValid = await comparePassword(credentials.password, user.passwordHash)
+				if (!isPasswordValid) {
+					throw new Error('Invalid password')
+				}
+
+				const deviceId = generateDeviceId()
+				const refreshToken = await generateRefreshToken(user.id, deviceId, req.headers?.['user-agent'] || 'unknown')
+
+				// Return user object that matches the session/JWT structure
+				return {
+					id: user.id,
+					email: user.email,
+					name: user.name,
+					role: user.role,
+					firstName: user.firstName,
+					lastName: user.lastName,
+					phoneNumber: user.phoneNumber,
+					address: user.address,
+					refreshToken,
+					deviceId,
 				}
 			},
 		}),
@@ -208,13 +216,11 @@ export const authOptions: NextAuthOptions = {
 		// Include user role and ID in the JWT
 		async jwt({ token, user }) {
 			if (user) {
-				// Explicitly type user as CustomUser to avoid 'any' type error
 				const customUser = user as NextAuthUser & { id: string; role: Role; refreshToken?: string; deviceId?: string }
 				token.id = customUser.id
 				token.role = customUser.role
 				token.refreshToken = customUser.refreshToken
 				token.deviceId = customUser.deviceId
-				// token.isActive = customUser.isActive; // Add other fields if needed
 			}
 			return token
 		},
@@ -225,7 +231,6 @@ export const authOptions: NextAuthOptions = {
 				session.user.role = token.role
 				session.refreshToken = token.refreshToken
 				session.deviceId = token.deviceId
-				// session.user.isActive = token.isActive; // Add other fields if needed
 			}
 			return session
 		},
@@ -234,6 +239,7 @@ export const authOptions: NextAuthOptions = {
 		signIn: '/login',
 		error: '/login',
 	},
+	debug: process.env.NODE_ENV === 'development', // Enable debug messages in development
 	// Define custom pages if needed
 	// pages: {
 	//   signIn: '/auth/signin',
