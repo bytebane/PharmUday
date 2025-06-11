@@ -23,9 +23,10 @@ jobs:
 
             - name: Prepare docker-compose for production
               run: |
-                  sed -i "s/Host(\`localhost\`)/Host(\`${PROD_DOMAIN}\`)/" docker-compose.yml
+                  sed -i "s/Host(\`localhost\`)/Host(\`${{ secrets.PROD_DOMAIN }}\`)/" docker-compose.yml
                   sed -i 's/# - "traefik.http.routers.pharmpilot.entrypoints=web,websecure"/- "traefik.http.routers.pharmpilot.entrypoints=web,websecure"/' docker-compose.yml
                   sed -i 's/# - "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt"/- "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt"/' docker-compose.yml
+                  sed -i "s/\${ADMIN_EMAIL}/${{ secrets.ADMIN_EMAIL }}/" docker-compose.yml
               #   Optionally, remove the Traefik dashboard in production
               #   sed -i '/--api.insecure=true/d' docker-compose.yml
 
