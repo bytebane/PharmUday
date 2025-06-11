@@ -1,29 +1,28 @@
-import { type NextAuthOptions, type User as NextAuthUser, Session, getServerSession } from 'next-auth' // Import getServerSession
+import { type NextAuthOptions, type User as NextAuthUser, Session, getServerSession } from 'next-auth'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import { db } from '@/lib/db' // Corrected import path for prisma client
-import { comparePassword } from '@/lib/passwords' // Import password comparison utility
-import { Role } from '@/generated/prisma' // Import Role enum
+import { db } from '@/lib/db'
+import { comparePassword } from '@/lib/passwords'
+import { Role } from '@/generated/prisma'
 import { randomBytes } from 'crypto'
 import * as argon2 from 'argon2'
 import { v4 as uuidv4 } from 'uuid'
 
-// Extend the default User and Session types to include your custom fields (like role)
+// Extend the default User and Session types to include your custom fields
 declare module 'next-auth' {
 	interface CustomUser extends NextAuthUser {
 		role: Role
 		id: string
+		isActive?: boolean
 	}
 	interface Session {
-		// Ensure the Session.user type includes all properties you add in the session callback
-		// Make sure user object in session includes the role
 		user: CustomUser & {
 			role: Role
 			id: string
-			name: string // Add name to the session user type
-			email: string // Add email to the session user type
-			image?: string // Optional image field
-			deviceId?: string
+			name: string
+			email: string
+			image?: string
+			isActive?: boolean
 		}
 		refreshToken?: string
 		deviceId?: string
@@ -33,20 +32,19 @@ declare module 'next-auth' {
 declare module 'next-auth/jwt' {
 	interface JWT {
 		role: Role
-		// Add other custom fields you want in the JWT
-		// isActive: boolean;
 		id: string
 		refreshToken?: string
 		deviceId?: string
+		isActive?: boolean
 	}
 }
 
-// Convert minutes to seconds for NextAuth
-const SESSION_MAX_AGE = Number(process.env.SESSION_MAX_AGE) * 60 || 15 * 60 // Default to 15 minutes if not set
-const JWT_MAX_AGE = Number(process.env.JWT_MAX_AGE) * 60 || 15 * 60 // Default to 15 minutes if not set
-const REFRESH_TOKEN_MAX_AGE = 5 * 60 * 1000 // 5 minutes for testing
-const REFRESH_TOKEN_EXPIRY_THRESHOLD = 1 * 60 * 1000 // 1 minute for testing
-const MAX_CONCURRENT_SESSIONS = 5 // Maximum number of concurrent sessions per user
+// Environment variables with defaults
+const SESSION_MAX_AGE = Number(process.env.SESSION_MAX_AGE) * 60 || 15 * 60 // Default to 15 minutes
+const JWT_MAX_AGE = Number(process.env.JWT_MAX_AGE) * 60 || 15 * 60 // Default to 15 minutes
+const REFRESH_TOKEN_MAX_AGE = Number(process.env.REFRESH_TOKEN_MAX_AGE) * 60 * 1000 || 5 * 60 * 1000 // Default to 5 minutes
+const REFRESH_TOKEN_EXPIRY_THRESHOLD = Number(process.env.REFRESH_TOKEN_EXPIRY_THRESHOLD) * 60 * 1000 || 1 * 60 * 1000 // Default to 1 minute
+const MAX_CONCURRENT_SESSIONS = Number(process.env.MAX_CONCURRENT_SESSIONS) || 5 // Default to 5
 
 // Helper function to get device information
 function getDeviceInfo(userAgent: string) {
@@ -64,22 +62,9 @@ function generateDeviceId(): string {
 // Helper function to generate a refresh token
 async function generateRefreshToken(userId: string, deviceId: string, userAgent: string) {
 	// Clean up expired tokens
-	const expiredTokens = await db.refreshToken.deleteMany({
+	await db.refreshToken.deleteMany({
 		where: {
 			OR: [{ expires: { lt: new Date() } }, { revoked: true }],
-		},
-	})
-
-	// Only revoke expired tokens for this device
-	const revokedTokens = await db.refreshToken.updateMany({
-		where: {
-			userId,
-			deviceId,
-			revoked: false,
-			expires: { lt: new Date() }, // Only revoke expired tokens
-		},
-		data: {
-			revoked: true,
 		},
 	})
 
@@ -107,7 +92,7 @@ async function generateRefreshToken(userId: string, deviceId: string, userAgent:
 	const expires = new Date(Date.now() + REFRESH_TOKEN_MAX_AGE)
 
 	// Store the refresh token in the database
-	const newToken = await db.refreshToken.create({
+	await db.refreshToken.create({
 		data: {
 			tokenHash: hashedToken,
 			userId,
@@ -119,43 +104,8 @@ async function generateRefreshToken(userId: string, deviceId: string, userAgent:
 	return token
 }
 
-// Helper function to verify a refresh token
-async function verifyRefreshToken(token: string, userId: string, deviceId: string) {
-	// Clean up expired tokens
-	const expiredTokens = await db.refreshToken.deleteMany({
-		where: {
-			OR: [{ expires: { lt: new Date() } }, { revoked: true }],
-		},
-	})
-
-	// Find the token for this specific device
-	const refreshToken = await db.refreshToken.findFirst({
-		where: {
-			userId,
-			deviceId,
-			revoked: false,
-			expires: { gt: new Date() },
-		},
-	})
-
-	if (!refreshToken) {
-		return false
-	}
-
-	const isValid = await argon2.verify(refreshToken.tokenHash, token)
-	if (!isValid) {
-		await db.refreshToken.update({
-			where: { id: refreshToken.id },
-			data: { revoked: true },
-		})
-		return false
-	}
-
-	return true
-}
-
 export const authOptions: NextAuthOptions = {
-	adapter: PrismaAdapter(db), // Use Prisma adapter with your client
+	adapter: PrismaAdapter(db),
 	providers: [
 		CredentialsProvider({
 			name: 'Credentials',
@@ -176,6 +126,10 @@ export const authOptions: NextAuthOptions = {
 					throw new Error('No user found with this email')
 				}
 
+				if (!user.isActive) {
+					throw new Error('Account is inactive. Please contact support to activate your account.')
+				}
+
 				if (!user.passwordHash) {
 					throw new Error('Invalid account configuration')
 				}
@@ -188,7 +142,6 @@ export const authOptions: NextAuthOptions = {
 				const deviceId = generateDeviceId()
 				const refreshToken = await generateRefreshToken(user.id, deviceId, req.headers?.['user-agent'] || 'unknown')
 
-				// Return user object that matches the session/JWT structure
 				return {
 					id: user.id,
 					email: user.email,
@@ -200,37 +153,37 @@ export const authOptions: NextAuthOptions = {
 					address: user.address,
 					refreshToken,
 					deviceId,
+					isActive: user.isActive,
 				}
 			},
 		}),
-		// Add other providers if needed (e.g., Google, GitHub)
 	],
 	session: {
-		strategy: 'jwt', // Use JWT for session strategy (common for credentials provider)
-		maxAge: SESSION_MAX_AGE, // 15 minutes
+		strategy: 'jwt',
+		maxAge: SESSION_MAX_AGE,
 	},
 	jwt: {
-		maxAge: JWT_MAX_AGE, // 15 minutes
+		maxAge: JWT_MAX_AGE,
 	},
 	callbacks: {
-		// Include user role and ID in the JWT
 		async jwt({ token, user }) {
 			if (user) {
-				const customUser = user as NextAuthUser & { id: string; role: Role; refreshToken?: string; deviceId?: string }
+				const customUser = user as NextAuthUser & { id: string; role: Role; refreshToken?: string; deviceId?: string; isActive?: boolean }
 				token.id = customUser.id
 				token.role = customUser.role
 				token.refreshToken = customUser.refreshToken
 				token.deviceId = customUser.deviceId
+				token.isActive = customUser.isActive
 			}
 			return token
 		},
-		// Include user role and ID in the session object
 		async session({ session, token }) {
 			if (token && session.user) {
 				session.user.id = token.id
 				session.user.role = token.role
 				session.refreshToken = token.refreshToken
 				session.deviceId = token.deviceId
+				session.user.isActive = token.isActive as boolean
 			}
 			return session
 		},
@@ -239,24 +192,15 @@ export const authOptions: NextAuthOptions = {
 		signIn: '/login',
 		error: '/login',
 	},
-	debug: process.env.NODE_ENV === 'development', // Enable debug messages in development
-	// Define custom pages if needed
-	// pages: {
-	//   signIn: '/auth/signin',
-	//   signOut: '/auth/signout',
-	//   error: '/auth/error', // Error code passed in query string as ?error=
-	//   verifyRequest: '/auth/verify-request', // (used for email/passwordless login)
-	//   newUser: '/auth/new-user' // New users will be directed here on first sign in (leave the property out to disable)
-	// }
+	debug: process.env.NODE_ENV === 'development',
 }
 
 // Helper function to get session in server components/API routes
 export const getCurrentUser = async (): Promise<Session['user'] | null> => {
 	const session = await getServerSession(authOptions)
-	// The session object already contains the user structure defined in the session callback
-	// Adjust the return type if your session callback structure is different
 	return session?.user ?? null
 }
+
 // Helper function to refresh the session using a refresh token
 export async function refreshSession(refreshToken: string, userId: string, deviceId: string) {
 	// Find the current refresh token
@@ -286,15 +230,6 @@ export async function refreshSession(refreshToken: string, userId: string, devic
 		return null
 	}
 
-	// Check if token is about to expire (within 1 minute)
-	const isExpiringSoon = currentToken.expires.getTime() - Date.now() < REFRESH_TOKEN_EXPIRY_THRESHOLD
-
-	let newRefreshToken = refreshToken
-	if (isExpiringSoon) {
-		// Generate a new refresh token only if the current one is about to expire
-		newRefreshToken = await generateRefreshToken(userId, deviceId, 'refresh')
-	}
-
 	// Get the user
 	const user = await db.user.findUnique({
 		where: { id: userId },
@@ -307,11 +242,36 @@ export async function refreshSession(refreshToken: string, userId: string, devic
 			lastName: true,
 			phoneNumber: true,
 			address: true,
+			isActive: true,
 		},
 	})
 
 	if (!user) {
 		return null
+	}
+
+	// Check if user is inactive
+	if (!user.isActive) {
+		// Revoke all refresh tokens for this user
+		await db.refreshToken.updateMany({
+			where: {
+				userId,
+				revoked: false,
+			},
+			data: {
+				revoked: true,
+			},
+		})
+		return null
+	}
+
+	// Check if token is about to expire
+	const isExpiringSoon = currentToken.expires.getTime() - Date.now() < REFRESH_TOKEN_EXPIRY_THRESHOLD
+
+	let newRefreshToken = refreshToken
+	if (isExpiringSoon) {
+		// Generate a new refresh token only if the current one is about to expire
+		newRefreshToken = await generateRefreshToken(userId, deviceId, 'refresh')
 	}
 
 	return {

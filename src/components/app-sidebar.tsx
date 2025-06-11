@@ -10,7 +10,7 @@ import { NavMain } from '@/components/nav-main'
 import { NavUser } from '@/components/nav-user'
 import { StoreSwitcher } from '@/components/store-switcher'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenuButton, SidebarMenuItem, SidebarRail } from '@/components/ui/sidebar'
+import { Sidebar, SidebarContent as SidebarContentBase, SidebarFooter, SidebarHeader, SidebarMenuButton, SidebarMenuItem, SidebarRail } from '@/components/ui/sidebar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu'
 import Image from 'next/image'
 
@@ -137,25 +137,98 @@ const data = {
 	],
 }
 
+// Custom hook to handle session data
+function useStableSession() {
+	const { data: session, status } = useSession()
+	const [stableSession, setStableSession] = React.useState(session)
+	const [stableStatus, setStableStatus] = React.useState(status)
+
+	React.useEffect(() => {
+		// Only update if essential user data changes
+		if (session?.user?.name !== stableSession?.user?.name || session?.user?.email !== stableSession?.user?.email || session?.user?.image !== stableSession?.user?.image || session?.user?.role !== stableSession?.user?.role) {
+			console.log('[useStableSession] Essential user data changed, updating stable session')
+			setStableSession(session)
+		}
+
+		// Only update status if it changes from loading to something else
+		if (status !== stableStatus && status !== 'loading') {
+			console.log('[useStableSession] Status changed from loading, updating stable status')
+			setStableStatus(status)
+		}
+	}, [session, status])
+
+	return { session: stableSession, status: stableStatus }
+}
+
+// Debug component to track re-renders
+const DebugRender = React.memo(function DebugRender({ componentName }: { componentName: string }) {
+	console.log(`[${componentName}] Rendering at ${new Date().toISOString()}`)
+	return null
+})
+
+// Memoized sidebar content
+const SidebarContentWrapper = React.memo(function SidebarContentWrapper({ filteredNavMain, userData, theme, setTheme }: { filteredNavMain: any[]; userData: { name: string; email: string; avatar: string }; theme: string | undefined; setTheme: (theme: string) => void }) {
+	console.log('[SidebarContentWrapper] Rendering with props:', { filteredNavMain, userData, theme })
+	return (
+		<>
+			<DebugRender componentName='SidebarContentWrapper' />
+			<SidebarHeader>
+				<StoreSwitcher teams={data.stores} />
+			</SidebarHeader>
+			<SidebarContentBase>
+				<NavMain items={filteredNavMain} />
+			</SidebarContentBase>
+			<SidebarFooter>
+				<SidebarMenuItem className='list-none'>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<SidebarMenuButton
+								size='lg'
+								className='data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'>
+								{theme === 'dark' ? <Moon className='size-4' /> : <Sun className='size-4' />}
+								<span className='flex-1 text-left text-sm'>{theme === 'light' ? 'Light Theme' : theme === 'dark' ? 'Dark Theme' : 'System Theme'}</span>
+								<ChevronsUpDown className='ml-auto size-4' />
+							</SidebarMenuButton>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent
+							className='w-(--radix-dropdown-menu-trigger-width) min-w-32 rounded-lg'
+							side={'right'}
+							align='end'
+							sideOffset={4}>
+							<DropdownMenuItem onClick={() => setTheme('light')}>Light</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => setTheme('dark')}>Dark</DropdownMenuItem>
+							<DropdownMenuItem onClick={() => setTheme('system')}>System</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</SidebarMenuItem>
+				<NavUser user={userData} />
+			</SidebarFooter>
+		</>
+	)
+})
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-	const { data: session, status } = useSession() // Get session data and status
-	const { theme, setTheme } = useTheme() // Get theme state and setter
+	console.log('[AppSidebar] Rendering at', new Date().toISOString())
+	const { session, status } = useStableSession()
+	const { theme, setTheme } = useTheme()
 	const router = useRouter()
 	const pathname = usePathname()
 	const [isNavigating, startTransition] = React.useTransition()
 	const [navigatingTo, setNavigatingTo] = React.useState<string | null>(null)
 
 	// Define user data based on session or provide defaults/loading state
-	const userData = {
-		name: session?.user?.name ?? 'User',
-		email: session?.user?.email ?? 'Loading...',
-		// Use session image if available, otherwise fallback or leave empty
-		avatar: session?.user?.image ?? '', // Auth.js uses 'image' by default
-	}
+	const userData = React.useMemo(() => {
+		console.log('[AppSidebar] Computing userData')
+		return {
+			name: session?.user?.name ?? 'User',
+			email: session?.user?.email ?? 'Loading...',
+			avatar: session?.user?.image ?? '',
+		}
+	}, [session?.user?.name, session?.user?.email, session?.user?.image])
 
 	const handleNavigation = React.useCallback(
 		(url: string) => {
-			if (pathname === url || url === '#') return // Don't navigate if already on the page or it's a placeholder
+			if (pathname === url || url === '#') return
 
 			setNavigatingTo(url)
 			startTransition(() => {
@@ -166,8 +239,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	)
 
 	React.useEffect(() => {
-		// Clear navigatingTo when the actual pathname changes (navigation completes)
-		// or when isNavigating becomes false (transition ended, possibly before pathname update if error)
 		if (navigatingTo && (pathname === navigatingTo || !isNavigating)) {
 			setNavigatingTo(null)
 		}
@@ -175,7 +246,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
 	// Filter nav items based on user role
 	const filteredNavMain = React.useMemo(() => {
-		if (!session?.user?.role) return [] // Or return a default set for unauthenticated/loading
+		console.log('[AppSidebar] Computing filteredNavMain')
+		if (!session?.user?.role) return []
 		const userRole = session.user.role
 
 		type NavItem = {
@@ -205,54 +277,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		return processItems(data.navMainBase)
 	}, [session?.user?.role, pathname, handleNavigation, isNavigating, navigatingTo])
 
-	// Optional: Show skeleton while loading session
 	if (status === 'loading') {
-		return <SidebarSkeleton {...props} /> // Use a skeleton component for loading
+		console.log('[AppSidebar] Rendering loading state')
+		return <SidebarSkeleton {...props} />
 	}
 
+	console.log('[AppSidebar] Rendering main content')
 	return (
 		<Sidebar
 			collapsible='icon'
 			{...props}>
-			<SidebarHeader>
-				<StoreSwitcher teams={data.stores} />
-			</SidebarHeader>
-			<SidebarContent>
-				<NavMain items={filteredNavMain} />
-			</SidebarContent>
-			<SidebarFooter>
-				{/* Theme Switcher integrated as a SidebarMenuItem */}
-				<SidebarMenuItem className='list-none'>
-					{' '}
-					{/* Add list-none to remove marker */}
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<SidebarMenuButton
-								size='lg'
-								className='data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'>
-								{/* Show Sun or Moon based on current theme */}
-								{theme === 'dark' ? <Moon className='size-4' /> : <Sun className='size-4' />}
-								{/* Display full theme name */}
-								<span className='flex-1 text-left text-sm'>{theme === 'light' ? 'Light Theme' : theme === 'dark' ? 'Dark Theme' : 'System Theme'}</span>
-								<ChevronsUpDown className='ml-auto size-4' />
-							</SidebarMenuButton>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent
-							className='w-(--radix-dropdown-menu-trigger-width) min-w-32 rounded-lg' // Adjusted width
-							side={'right'} // Keep consistent side
-							align='end'
-							sideOffset={4}>
-							{/* Theme options */}
-							<DropdownMenuItem onClick={() => setTheme('light')}>Light</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => setTheme('dark')}>Dark</DropdownMenuItem>
-							<DropdownMenuItem onClick={() => setTheme('system')}>System</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</SidebarMenuItem>
-				{/* Pass dynamic user data to NavUser */}
-				<NavUser user={userData} />
-			</SidebarFooter>
-			<SidebarRail />
+			<DebugRender componentName='AppSidebar' />
+			<SidebarContentWrapper
+				filteredNavMain={filteredNavMain}
+				userData={userData}
+				theme={theme}
+				setTheme={setTheme}
+			/>
 		</Sidebar>
 	)
 }
@@ -266,7 +307,7 @@ function SidebarSkeleton({ ...props }: React.ComponentProps<typeof Sidebar>) {
 			<SidebarHeader>
 				<Skeleton className='h-10 w-full' /> {/* Skeleton for StoreSwitcher */}
 			</SidebarHeader>
-			<SidebarContent>
+			<SidebarContentBase>
 				<div className='flex flex-col gap-2 p-2'>
 					{[...Array(5)].map((_, i) => (
 						<Skeleton
@@ -275,7 +316,7 @@ function SidebarSkeleton({ ...props }: React.ComponentProps<typeof Sidebar>) {
 						/> // Skeleton for NavMain items
 					))}
 				</div>
-			</SidebarContent>
+			</SidebarContentBase>
 			<SidebarFooter>
 				<Skeleton className='h-[58px] w-full' /> {/* Skeleton for Theme Toggle Item */}
 				<Skeleton className='h-[58px] w-full' /> {/* Skeleton for NavUser */}
