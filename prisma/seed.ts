@@ -91,18 +91,29 @@ async function main() {
 			timeCost: 3,
 			parallelism: 1,
 		})
-		await prisma.user.create({
-			data: {
-				email: customerEmail,
-				name: customerName,
-				firstName: customerName.split(' ')[0],
-				lastName: customerName.split(' ').slice(1).join(' '),
-				passwordHash: hashedCustomerPassword,
-				role: Role.CUSTOMER,
-				isActive: true,
-				emailVerified: new Date(),
-			},
-		})
+		await prisma.user
+			.create({
+				data: {
+					email: customerEmail,
+					name: customerName,
+					firstName: customerName.split(' ')[0],
+					lastName: customerName.split(' ').slice(1).join(' '),
+					passwordHash: hashedCustomerPassword,
+					role: Role.CUSTOMER,
+					isActive: true,
+					emailVerified: new Date(),
+				},
+			})
+			.then(async user => {
+				await prisma.customer.create({
+					data: {
+						userId: user.id,
+						name: user.name || '',
+						email: user.email || '',
+						address: '123 Main St',
+					},
+				})
+			})
 		console.log(`Customer user created with email ${customerEmail}`)
 	} else {
 		console.log(`Customer user with email ${customerEmail} already exists.`)
