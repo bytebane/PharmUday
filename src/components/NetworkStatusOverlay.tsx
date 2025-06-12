@@ -1,5 +1,6 @@
 'use client'
 
+import { WifiOff } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 export function NetworkStatusOverlay() {
@@ -19,16 +20,15 @@ export function NetworkStatusOverlay() {
 	if (isOnline) return null
 
 	return (
-		<div
-			className='fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-black/70 select-none'
-			style={{ pointerEvents: 'all' }}
-			aria-modal='true'
-			role='alertdialog'
-			tabIndex={-1}>
-			<div className='bg-red-600 text-white px-8 py-6 rounded-lg shadow-lg text-center text-lg font-semibold max-w-xs'>
-				No internet connection.
-				<br />
-				Please connect to the internet first.
+		<div className='fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm'>
+			<div className='mx-4 flex max-w-sm flex-col items-center gap-4 rounded-lg border bg-card p-6 text-center shadow-lg'>
+				<div className='flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10'>
+					<WifiOff className='h-6 w-6 text-destructive' />
+				</div>
+				<div className='space-y-2'>
+					<h3 className='text-lg font-semibold'>No Internet Connection</h3>
+					<p className='text-sm text-muted-foreground'>Please check your network connection and try again.</p>
+				</div>
 			</div>
 		</div>
 	)
