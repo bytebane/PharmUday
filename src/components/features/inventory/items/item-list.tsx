@@ -25,6 +25,7 @@ import * as XLSX from 'xlsx'
 import { useColumnVisibility } from '@/hooks/useColumnVisibility'
 import { ColumnVisibilityToggle } from '@/components/features/inventory/column-visibility-toggle'
 import Image from 'next/image'
+import { DataTableActions } from '@/components/custom/data-table-actions'
 
 const itemQueryKeys = {
 	all: ['items'] as const,
@@ -604,27 +605,15 @@ export function ItemList() {
 				header: () => <div className='text-right'>Actions</div>,
 				cell: ({ row }: { row: { original: ItemWithRelations } }) => (
 					<div className='text-right'>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button
-									variant='ghost'
-									className='h-8 w-8 p-0'>
-									<span className='sr-only'>Open menu</span>
-									<MoreHorizontal className='h-4 w-4' />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align='end'>
-								<DropdownMenuItem onClick={() => handleEdit(row.original)}>
-									<Edit className='mr-2 h-4 w-4' /> Edit
-								</DropdownMenuItem>
-								<DropdownMenuItem
-									onClick={() => handleDelete(row.original.id)}
-									disabled={deleteMutation.isPending && deleteMutation.variables === row.original.id}
-									className='text-red-600 focus:text-red-700 focus:bg-red-50'>
-									<Trash2 className='mr-2 h-4 w-4' /> Delete
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
+						<DataTableActions<ItemWithRelations>
+							row={row.original}
+							onEdit={handleEdit}
+							onDelete={id => {
+								if (!confirm('Are you sure you want to delete this item?')) return
+								handleDelete(id)
+							}}
+							isDeleting={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+						/>
 					</div>
 				),
 			} as ColumnDef<ItemWithRelations>)

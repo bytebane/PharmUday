@@ -11,6 +11,7 @@ import { ColumnDef, SortingState, PaginationState } from '@tanstack/react-table'
 import { Input } from '@/components/ui/input'
 import { fetchSalesHistory_cli } from '@/services/saleService'
 import { CustomDataTable } from '@/components/custom/custom-data-table'
+import { DataTableActions } from '@/components/custom/data-table-actions'
 
 export function SalesHistoryList() {
 	const router = useRouter()
@@ -103,26 +104,19 @@ export function SalesHistoryList() {
 			{
 				id: 'actions',
 				header: () => <div className='text-right'>Actions</div>,
-				cell: ({ row }) => (
+				cell: ({ row }: { row: { original: SaleWithBasicRelations } }) => (
 					<div className='text-right'>
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button
-									variant='ghost'
-									className='h-8 w-8 p-0'>
-									<span className='sr-only'>Open menu</span>
-									<MoreHorizontal className='h-4 w-4' />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align='end'>
-								<DropdownMenuLabel>Actions</DropdownMenuLabel>
-								<DropdownMenuSeparator />
-								<DropdownMenuItem onClick={() => router.push(`/sales/${row.original.id}`)}>
-									<Eye className='mr-2 h-4 w-4' />
-									View Invoice
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
+						<DataTableActions<SaleWithBasicRelations>
+							row={row.original}
+							viewPath={`/sales/${row.original.id}`}
+							customActions={[
+								{
+									label: 'View Invoice',
+									icon: <Eye className='h-4 w-4' />,
+									onClick: () => router.push(`/sales/${row.original.id}`),
+								},
+							]}
+						/>
 					</div>
 				),
 			},

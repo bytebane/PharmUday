@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { fetchReportCategories_cli, deleteReportCategory_cli } from '@/services/reportService'
 import { AddFAB } from '@/components/AddFAB'
 import { ReportCategoryForm } from './cat-form'
+import { DataTableActions } from '@/components/custom/data-table-actions'
 
 const reportCategoryQueryKeys = {
 	all: ['report-categories'] as const,
@@ -107,27 +108,15 @@ export function ReportCategoryList() {
 							header: () => <div className='text-right'>Actions</div>,
 							cell: ({ row }: { row: { original: PrismaReportCategory } }) => (
 								<div className='text-right'>
-									<DropdownMenu>
-										<DropdownMenuTrigger asChild>
-											<Button
-												variant='ghost'
-												className='h-8 w-8 p-0'>
-												<span className='sr-only'>Open menu</span>
-												<MoreHorizontal className='h-4 w-4' />
-											</Button>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align='end'>
-											<DropdownMenuItem onClick={() => handleEdit(row.original)}>
-												<Edit className='mr-2 h-4 w-4' /> Edit
-											</DropdownMenuItem>
-											<DropdownMenuItem
-												onClick={() => handleDelete(row.original.id)}
-												disabled={deleteMutation.isPending && deleteMutation.variables === row.original.id}
-												className='text-red-600 focus:text-red-700 focus:bg-red-50'>
-												<Trash2 className='mr-2 h-4 w-4' /> Delete
-											</DropdownMenuItem>
-										</DropdownMenuContent>
-									</DropdownMenu>
+									<DataTableActions<PrismaReportCategory>
+										row={row.original}
+										onEdit={handleEdit}
+										onDelete={id => {
+											if (!confirm('Are you sure you want to delete this report category?')) return
+											handleDelete(id)
+										}}
+										isDeleting={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+									/>
 								</div>
 							),
 						} as ColumnDef<PrismaReportCategory>,

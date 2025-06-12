@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { CustomerForm } from './customer-form'
 import { fetchCustomers_cli, deleteCustomer_cli } from '@/services/customerService'
 import { AddFAB } from '@/components/AddFAB'
+import { DataTableActions } from '@/components/custom/data-table-actions'
 
 const customerQueryKeys = {
 	all: ['customers'] as const,
@@ -116,30 +117,14 @@ export function CustomerList() {
 						{
 							id: 'actions',
 							header: () => <div className='text-right'>Actions</div>,
-							cell: ({ row }: { row: { original: PrismaCustomer } }) => (
-								<div className='text-right'>
-									<DropdownMenu>
-										<DropdownMenuTrigger asChild>
-											<Button
-												variant='ghost'
-												className='h-8 w-8 p-0'>
-												<span className='sr-only'>Open menu</span>
-												<MoreHorizontal className='h-4 w-4' />
-											</Button>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align='end'>
-											<DropdownMenuItem onClick={() => handleEdit(row.original)}>
-												<Edit className='mr-2 h-4 w-4' /> Edit
-											</DropdownMenuItem>
-											<DropdownMenuItem
-												onClick={() => handleDelete(row.original.id)}
-												disabled={deleteMutation.isPending && deleteMutation.variables === row.original.id}
-												className='text-red-600 focus:text-red-700 focus:bg-red-50'>
-												<Trash2 className='mr-2 h-4 w-4' /> Delete
-											</DropdownMenuItem>
-										</DropdownMenuContent>
-									</DropdownMenu>
-								</div>
+							cell: ({ row }) => (
+								<DataTableActions
+									row={row}
+									onEdit={handleEdit}
+									onDelete={handleDelete}
+									isDeleting={deleteMutation.isPending}
+									deleteId={deleteMutation.variables}
+								/>
 							),
 						} as ColumnDef<PrismaCustomer>,
 					]
