@@ -31,9 +31,21 @@ export function LoginForm() {
 		setIsLoading(true)
 
 		try {
+			// Get device information
+			const deviceInfo = {
+				userAgent: navigator.userAgent,
+				screenWidth: window.screen.width,
+				screenHeight: window.screen.height,
+				colorDepth: window.screen.colorDepth,
+				timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+				language: navigator.language,
+				platform: navigator.platform,
+			}
+
 			const result = await signIn('credentials', {
 				email: email,
 				password: password,
+				deviceInfo: JSON.stringify(deviceInfo),
 				callbackUrl: '/', // Default redirect URL
 				redirect: false, // Prevent automatic redirect
 			})

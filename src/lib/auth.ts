@@ -4,7 +4,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import { db } from '@/lib/db'
 import { comparePassword } from '@/lib/passwords'
 import { Role } from '@/generated/prisma'
-import { randomBytes } from 'crypto'
+import { randomBytes, createHash } from 'crypto'
 import * as argon2 from 'argon2'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -45,28 +45,64 @@ const JWT_MAX_AGE = Number(process.env.JWT_MAX_AGE) * 60 || 15 * 60 // Default t
 const REFRESH_TOKEN_MAX_AGE = Number(process.env.REFRESH_TOKEN_MAX_AGE) * 60 * 1000 || 5 * 60 * 1000 // Default to 5 minutes
 const REFRESH_TOKEN_EXPIRY_THRESHOLD = Number(process.env.REFRESH_TOKEN_EXPIRY_THRESHOLD) * 60 * 1000 || 1 * 60 * 1000 // Default to 1 minute
 const MAX_CONCURRENT_SESSIONS = Number(process.env.MAX_CONCURRENT_SESSIONS) || 5 // Default to 5
+const REVOKED_SESSION_RETENTION_DAYS = Number(process.env.REVOKED_SESSION_RETENTION_DAYS) || 30 // Default to 30 days
 
 // Helper function to get device information
-function getDeviceInfo(userAgent: string) {
+function getDeviceInfo(deviceInfo: any) {
 	return {
-		userAgent,
+		...deviceInfo,
 		timestamp: new Date().toISOString(),
 	}
 }
 
 // Helper function to generate a device ID
-function generateDeviceId(): string {
-	return `device_${uuidv4()}`
+function generateDeviceId(deviceInfo: any): string {
+	// Create a stable hash of the device info
+	const deviceString = JSON.stringify(deviceInfo)
+	return `device_${createHash('sha256').update(deviceString).digest('hex')}`
+}
+
+// Helper function to clean up old revoked sessions
+async function cleanupRevokedSessions() {
+	const retentionDate = new Date()
+	retentionDate.setDate(retentionDate.getDate() - REVOKED_SESSION_RETENTION_DAYS)
+
+	await db.refreshToken.deleteMany({
+		where: {
+			AND: [{ revoked: true }, { updatedAt: { lt: retentionDate } }],
+		},
+	})
 }
 
 // Helper function to generate a refresh token
-async function generateRefreshToken(userId: string, deviceId: string, userAgent: string) {
-	// Clean up expired tokens
-	await db.refreshToken.deleteMany({
+async function generateRefreshToken(userId: string, deviceId: string, deviceInfo: any) {
+	// Clean up expired tokens and old revoked sessions
+	await Promise.all([
+		db.refreshToken.deleteMany({
+			where: {
+				expires: { lt: new Date() },
+			},
+		}),
+		cleanupRevokedSessions(),
+	])
+
+	// First, check for existing token for this device
+	const existingToken = await db.refreshToken.findFirst({
 		where: {
-			OR: [{ expires: { lt: new Date() } }, { revoked: true }],
+			userId,
+			deviceId,
+			revoked: false,
+			expires: { gt: new Date() },
+		},
+		orderBy: {
+			createdAt: 'desc',
 		},
 	})
+
+	// If we have a valid token for this device, return it
+	if (existingToken) {
+		return existingToken.tokenHash
+	}
 
 	// Check if user has reached maximum concurrent sessions
 	const activeTokens = await db.refreshToken.count({
@@ -78,7 +114,39 @@ async function generateRefreshToken(userId: string, deviceId: string, userAgent:
 	})
 
 	if (activeTokens >= MAX_CONCURRENT_SESSIONS) {
-		throw new Error('Maximum number of concurrent sessions reached')
+		// Get all active tokens ordered by last activity
+		const activeTokens = await db.refreshToken.findMany({
+			where: {
+				userId,
+				revoked: false,
+				expires: { gt: new Date() },
+			},
+			orderBy: {
+				updatedAt: 'asc', // Order by last activity
+			},
+		})
+
+		// Revoke the least recently active token that's not from the current device
+		const tokenToRevoke = activeTokens.find(token => token.deviceId !== deviceId)
+
+		if (tokenToRevoke) {
+			await db.refreshToken.update({
+				where: { id: tokenToRevoke.id },
+				data: {
+					revoked: true,
+					updatedAt: new Date(), // Update the timestamp when revoking
+				},
+			})
+		} else {
+			// If all tokens are from the same device, revoke the oldest one
+			await db.refreshToken.update({
+				where: { id: activeTokens[0].id },
+				data: {
+					revoked: true,
+					updatedAt: new Date(), // Update the timestamp when revoking
+				},
+			})
+		}
 	}
 
 	const token = randomBytes(32).toString('hex')
@@ -97,7 +165,7 @@ async function generateRefreshToken(userId: string, deviceId: string, userAgent:
 			tokenHash: hashedToken,
 			userId,
 			deviceId,
-			deviceInfo: getDeviceInfo(userAgent),
+			deviceInfo: getDeviceInfo(deviceInfo),
 			expires,
 		},
 	})
@@ -112,6 +180,7 @@ export const authOptions: NextAuthOptions = {
 			credentials: {
 				email: { label: 'Email', type: 'email', placeholder: 'user@example.com' },
 				password: { label: 'Password', type: 'password' },
+				deviceInfo: { label: 'Device Info', type: 'text' },
 			},
 			async authorize(credentials, req) {
 				if (!credentials?.email || !credentials.password) {
@@ -139,8 +208,11 @@ export const authOptions: NextAuthOptions = {
 					throw new Error('Invalid password')
 				}
 
-				const deviceId = generateDeviceId()
-				const refreshToken = await generateRefreshToken(user.id, deviceId, req.headers?.['user-agent'] || 'unknown')
+				// Parse device info from credentials or use user agent as fallback
+				const deviceInfo = credentials.deviceInfo ? JSON.parse(credentials.deviceInfo) : { userAgent: req.headers?.['user-agent'] || 'unknown' }
+
+				const deviceId = generateDeviceId(deviceInfo)
+				const refreshToken = await generateRefreshToken(user.id, deviceId, deviceInfo)
 
 				return {
 					id: user.id,
