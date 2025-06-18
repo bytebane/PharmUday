@@ -38,6 +38,7 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel, is
 		control,
 		setValue,
 		formState: { errors },
+		watch,
 	} = useForm<UserFormData>({
 		resolver: zodResolver(userFormSchema),
 		defaultValues: {
@@ -78,6 +79,8 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel, is
 		}
 		await onSubmit(data, user?.id)
 	}
+
+	const isActiveValue = watch('isActive')
 
 	return (
 		<DialogContent className='sm:max-w-[425px]'>
@@ -138,8 +141,8 @@ export const UserForm: React.FC<UserFormProps> = ({ user, onSubmit, onCancel, is
 				<div className='flex items-center space-x-2'>
 					<Switch
 						id='isActive'
-						checked={control._defaultValues.isActive} // Use control for Switch's checked state
-						onCheckedChange={checked => setValue('isActive', checked)}
+						checked={isActiveValue}
+						onCheckedChange={checked => setValue('isActive', checked, { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
 					/>
 					<Label htmlFor='isActive'>Active</Label>
 				</div>
