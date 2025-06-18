@@ -6,7 +6,6 @@ import { comparePassword } from '@/lib/passwords'
 import { Role } from '@/generated/prisma'
 import { randomBytes, createHash } from 'crypto'
 import * as argon2 from 'argon2'
-import { v4 as uuidv4 } from 'uuid'
 
 // Extend the default User and Session types to include your custom fields
 declare module 'next-auth' {
