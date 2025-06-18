@@ -39,6 +39,64 @@ export async function GET(req: Request, { params }: { params: Promise<{ userId: 
 	}
 }
 
+// --- Helper Functions for PUT ---
+function canModifySelf(userId: string, currentUserId: string, isActive: boolean | undefined, roleToAssign: Role | undefined, currentUserRole: Role) {
+	if (userId === currentUserId) {
+		if (typeof isActive === 'boolean' && !isActive) {
+			return { allowed: false, message: 'Cannot deactivate your own account.' }
+		}
+		if (roleToAssign && roleToAssign !== currentUserRole) {
+			return { allowed: false, message: 'Cannot change your own role.' }
+		}
+	}
+	return { allowed: true }
+}
+
+function canAdminModify(userToUpdateRole: Role, userId: string, currentUserId: string, roleToAssign: Role | undefined, currentUserRole: Role) {
+	if (currentUserRole === Role.ADMIN) {
+		if ((userToUpdateRole === Role.ADMIN || userToUpdateRole === Role.SUPER_ADMIN) && userId !== currentUserId) {
+			return { allowed: false, message: 'Admins cannot modify other Admins or Super Admins.' }
+		}
+		if (roleToAssign === Role.ADMIN || roleToAssign === Role.SUPER_ADMIN) {
+			return { allowed: false, message: 'Admins cannot assign Admin or Super Admin roles.' }
+		}
+	}
+	return { allowed: true }
+}
+
+function canSuperAdminModify(userToUpdateRole: Role, currentUserRole: Role, roleToAssign: Role | undefined) {
+	if (userToUpdateRole === Role.SUPER_ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
+		return { allowed: false, message: 'Only Super Admins can modify other Super Admins.' }
+	}
+	if (roleToAssign === Role.SUPER_ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
+		return { allowed: false, message: 'Only Super Admins can assign the Super Admin role.' }
+	}
+	return { allowed: true }
+}
+
+async function prepareUpdateData(prisma: any, userId: string, userToUpdate: any, email: string | undefined, name: string | undefined, roleToAssign: Role | undefined, isActive: boolean | undefined, password: string | undefined) {
+	const updateData: any = {}
+	if (email && email !== userToUpdate.email) {
+		const existingEmailUser = await prisma.user.findUnique({ where: { email } })
+		if (existingEmailUser && existingEmailUser.id !== userId) {
+			return { error: 'Email already in use by another account.' }
+		}
+		updateData.email = email
+	}
+	if (name) updateData.name = name
+	if (roleToAssign) updateData.role = roleToAssign as Role
+	if (typeof isActive === 'boolean') updateData.isActive = isActive
+	if (password) {
+		updateData.passwordHash = await argon2.hash(password, {
+			type: argon2.argon2id,
+			memoryCost: 2 ** 16,
+			timeCost: 3,
+			parallelism: 1,
+		})
+	}
+	return { updateData }
+}
+
 /**
  * PUT /api/admin/users/[userId]
  * Updates a user.
@@ -48,7 +106,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ userId: 
 	if (authResult.response) {
 		return authResult.response
 	}
-	const { user: currentUser } = authResult as { user: AuthenticatedUser } // User is guaranteed non-null
+	const { user: currentUser } = authResult as { user: AuthenticatedUser }
 	const { userId } = await params
 	const currentUserId = currentUser.id
 	const currentUserRole = currentUser.role as Role
@@ -62,59 +120,24 @@ export async function PUT(req: Request, { params }: { params: Promise<{ userId: 
 			return NextResponse.json({ message: 'User not found' }, { status: 404 })
 		}
 
-		// Authorization: Prevent self-deactivation or role change that locks out
-		if (userId === currentUserId) {
-			// currentUserId is from the authenticated session
-			if (typeof isActive === 'boolean' && !isActive) {
-				return NextResponse.json({ message: 'Cannot deactivate your own account.' }, { status: 403 })
-			}
-			if (roleToAssign && roleToAssign !== currentUser.role) {
-				// currentUser.role
-				return NextResponse.json({ message: 'Cannot change your own role.' }, { status: 403 })
-			}
+		// --- Authorization Checks ---
+		const selfCheck = canModifySelf(userId, currentUserId, isActive, roleToAssign, currentUserRole)
+		if (!selfCheck.allowed) {
+			return NextResponse.json({ message: selfCheck.message }, { status: 403 })
+		}
+		const adminCheck = canAdminModify(userToUpdate.role, userId, currentUserId, roleToAssign, currentUserRole)
+		if (!adminCheck.allowed) {
+			return NextResponse.json({ message: adminCheck.message }, { status: 403 })
+		}
+		const superAdminCheck = canSuperAdminModify(userToUpdate.role, currentUserRole, roleToAssign)
+		if (!superAdminCheck.allowed) {
+			return NextResponse.json({ message: superAdminCheck.message }, { status: 403 })
 		}
 
-		// Authorization: Admins cannot modify other Admins or Super Admins
-		if (currentUserRole === Role.ADMIN) {
-			if (userToUpdate.role === Role.ADMIN || userToUpdate.role === Role.SUPER_ADMIN) {
-				if (userId !== currentUserId) {
-					// Admins can modify their own non-critical fields
-					return NextResponse.json({ message: 'Admins cannot modify other Admins or Super Admins.' }, { status: 403 })
-				}
-			}
-			if (roleToAssign === Role.ADMIN || roleToAssign === Role.SUPER_ADMIN) {
-				return NextResponse.json({ message: 'Admins cannot assign Admin or Super Admin roles.' }, { status: 403 })
-			}
-		}
-
-		// Prevent modifying SUPER_ADMIN by non-SUPER_ADMIN
-		if (userToUpdate.role === Role.SUPER_ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
-			return NextResponse.json({ message: 'Only Super Admins can modify other Super Admins.' }, { status: 403 })
-		}
-
-		// Prevent assigning SUPER_ADMIN role by non-SUPER_ADMIN
-		if (roleToAssign === Role.SUPER_ADMIN && currentUserRole !== Role.SUPER_ADMIN) {
-			return NextResponse.json({ message: 'Only Super Admins can assign the Super Admin role.' }, { status: 403 })
-		}
-
-		const updateData: any = {}
-		if (email && email !== userToUpdate.email) {
-			const existingEmailUser = await prisma.user.findUnique({ where: { email } })
-			if (existingEmailUser && existingEmailUser.id !== userId) {
-				return NextResponse.json({ message: 'Email already in use by another account.' }, { status: 409 })
-			}
-			updateData.email = email
-		}
-		if (name) updateData.name = name
-		if (roleToAssign) updateData.role = roleToAssign as Role
-		if (typeof isActive === 'boolean') updateData.isActive = isActive
-		if (password) {
-			updateData.passwordHash = await argon2.hash(password, {
-				type: argon2.argon2id,
-				memoryCost: 2 ** 16,
-				timeCost: 3,
-				parallelism: 1,
-			})
+		// --- Prepare Update Data ---
+		const { updateData, error } = await prepareUpdateData(prisma, userId, userToUpdate, email, name, roleToAssign, isActive, password)
+		if (error) {
+			return NextResponse.json({ message: error }, { status: 409 })
 		}
 
 		const updatedUser = await prisma.user.update({
