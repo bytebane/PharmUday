@@ -46,3 +46,8 @@ docker-compose.dev.yml
 
 package-lock.json
 bun.lock
+
+
+#Ignore cursor AI rules
+.cursor/rules/codacy.mdc
+.cursor/rules/rulebook.mdc
