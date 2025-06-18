@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
 export function useRefreshToken() {
+	const SESSION_REFRESH_INTERVAL = Number(process.env.SESSION_REFRESH_INTERVAL) || 14 * 60 * 1000 //if null 14 mins
 	const { data: session, update } = useSession()
 	const router = useRouter()
 
@@ -41,8 +42,8 @@ export function useRefreshToken() {
 					router.push('/login')
 				}
 			},
-			30 * 1000, // 30 seconds for testing
-			// 14 * 60 * 1000, // 14 minutes in production
+			SESSION_REFRESH_INTERVAL,
+			// 30 * 1000, // 30 seconds for testing\
 		)
 
 		return () => clearInterval(refreshInterval)
