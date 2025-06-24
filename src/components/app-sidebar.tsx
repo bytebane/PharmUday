@@ -17,11 +17,11 @@ import Image from 'next/image'
 const data = {
 	stores: [
 		{
-			name: 'PharmPilot',
+			name: 'PharmUday',
 			logo: () => (
 				<Image
 					src='/ppilot.png'
-					alt='PharmPilot'
+					alt='PharmUday'
 					className='h-6 w-6'
 					width={64}
 					height={64}

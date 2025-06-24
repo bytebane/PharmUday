@@ -93,4 +93,4 @@ export const COLUMN_PRESETS = {
 } as const
 
 // Storage key for persistence
-export const COLUMN_VISIBILITY_STORAGE_KEY = 'pharmpilot-column-visibility'
+export const COLUMN_VISIBILITY_STORAGE_KEY = 'pharmuday-column-visibility'

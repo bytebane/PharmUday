@@ -24,8 +24,8 @@ jobs:
             - name: Prepare docker-compose for production
               run: |
                   sed -i "s/Host(\`localhost\`)/Host(\`${{ secrets.PROD_DOMAIN }}\`)/" docker-compose.yml
-                  sed -i 's/# - "traefik.http.routers.pharmpilot.entrypoints=web,websecure"/- "traefik.http.routers.pharmpilot.entrypoints=web,websecure"/' docker-compose.yml
-                  sed -i 's/# - "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt"/- "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt"/' docker-compose.yml
+                  sed -i 's/# - "traefik.http.routers.pharmuday.entrypoints=web,websecure"/- "traefik.http.routers.pharmuday.entrypoints=web,websecure"/' docker-compose.yml
+                  sed -i 's/# - "traefik.http.routers.pharmuday.tls.certresolver=letsencrypt"/- "traefik.http.routers.pharmuday.tls.certresolver=letsencrypt"/' docker-compose.yml
                   sed -i "s/\${ADMIN_EMAIL}/${{ secrets.ADMIN_EMAIL }}/" docker-compose.yml
               #   Optionally, remove the Traefik dashboard in production
               #   sed -i '/--api.insecure=true/d' docker-compose.yml
@@ -86,12 +86,12 @@ jobs:
                   EOF
             - name: Copy files to Droplet
               run: |
-                  rsync -avz --exclude='.git*' --exclude='node_modules' -e "ssh -o StrictHostKeyChecking=no" ./ root@${{ secrets.DO_DROPLET_IP }}:/root/pharmpilot
+                  rsync -avz --exclude='.git*' --exclude='node_modules' -e "ssh -o StrictHostKeyChecking=no" ./ root@${{ secrets.DO_DROPLET_IP }}:/root/pharmuday
 
             - name: Stop existing services gracefully
               run: |
                       ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                        cd /root/pharmpilot
+                        cd /root/pharmuday
                         echo "Stopping services gracefully..."
                         docker compose down --timeout 30
 
@@ -101,7 +101,7 @@ jobs:
             - name: Deploy with Docker Compose
               run: |
                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmpilot
+                    cd /root/pharmuday
                     echo "Starting services..."
                     docker compose up -d --build
 
@@ -114,17 +114,17 @@ jobs:
             - name: Database operations
               run: |
                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmpilot
+                    cd /root/pharmuday
 
                     echo "=== Memory before DB operations ==="
                     free -h
 
                     echo "Running database push..."
-                    docker compose exec -T pharmpilot-app npx prisma db push
+                    docker compose exec -T pharmuday-app npx prisma db push
 
                     echo "Running database seed (if needed)..."
                     # Only seed if database is empty to avoid memory issues
-                    if ! docker compose exec -T pharmpilot-app npx prisma db seed --preview-feature 2>/dev/null; then
+                    if ! docker compose exec -T pharmuday-app npx prisma db seed --preview-feature 2>/dev/null; then
                       echo "Database seeding skipped or failed - this is normal for existing databases"
                     fi
 
@@ -135,7 +135,7 @@ jobs:
             - name: Wait for Elasticsearch to be ready
               run: |
                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmpilot
+                    cd /root/pharmuday
 
                     echo "Waiting for Elasticsearch to be ready..."
                     for i in {1..30}; do
@@ -151,18 +151,18 @@ jobs:
             - name: Sync data to Elasticsearch
               run: |
                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmpilot
+                    cd /root/pharmuday
 
                     echo "=== Memory before Elasticsearch sync ==="
                     free -h
 
                     echo "Syncing data to Elasticsearch..."
                     # Run the sync script with memory monitoring
-                    if docker compose exec -T pharmpilot-app npx tsx scripts/sync-items-elastic.ts; then
+                    if docker compose exec -T pharmuday-app npx tsx scripts/sync-items-elastic.ts; then
                       echo "✅ Elasticsearch sync completed successfully"
                     else
                       echo "⚠️  Elasticsearch sync failed - this might be due to memory constraints"
-                      echo "You can manually run the sync later with: docker compose exec pharmpilot-app npx tsx scripts/sync-items-elastic.ts"
+                      echo "You can manually run the sync later with: docker compose exec pharmuday-app npx tsx scripts/sync-items-elastic.ts"
                     fi
 
                     echo "=== Memory after Elasticsearch sync ==="
@@ -172,7 +172,7 @@ jobs:
             - name: Health check
               run: |
                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmpilot
+                    cd /root/pharmuday
 
                     echo "=== Final Health Check ==="
                     docker compose ps
@@ -192,7 +192,7 @@ jobs:
                     fi
 
                     # Test Elasticsearch connectivity
-                    if docker compose exec -T pharmpilot-app node -e "
+                    if docker compose exec -T pharmuday-app node -e "
                       const { esClient } = require('./dist/lib/elastic');
                       esClient.ping().then(() => console.log('✅ Elasticsearch connectivity OK')).catch(e => console.log('⚠️  Elasticsearch connectivity issue:', e.message));
                     " 2>/dev/null; then

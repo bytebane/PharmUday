@@ -29,7 +29,7 @@ export function PageBreadcrumbs() {
 		<Breadcrumb>
 			<BreadcrumbList>
 				<BreadcrumbItem className='hidden md:block'>
-					<BreadcrumbLink href='/'>PharmPilot</BreadcrumbLink>
+					<BreadcrumbLink href='/'>PharmUday</BreadcrumbLink>
 				</BreadcrumbItem>
 				<BreadcrumbSeparator className='hidden md:block' />
 				<BreadcrumbItem>

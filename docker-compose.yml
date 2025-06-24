@@ -1,6 +1,6 @@
 services:
   traefik:
-    container_name: pharmpilot-traefik
+    container_name: pharmuday-traefik
     image: traefik:v3.0
     restart: always
     command:
@@ -23,8 +23,8 @@ services:
       - web
       - db_net
 
-  pharmpilot-app:
-    container_name: pharmpilot-app
+  pharmuday-app:
+    container_name: pharmuday-app
     build:
       context: .
       dockerfile: Dockerfile
@@ -44,14 +44,14 @@ services:
           memory: 512m  # Limit app memory
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.pharmpilot.rule=Host(`localhost`)" # Change to your domain in production
-      # - "traefik.http.routers.pharmpilot.entrypoints=web,websecure" # Uncomment in production
-      # - "traefik.http.routers.pharmpilot.tls.certresolver=letsencrypt" # Uncomment in production
-      - "traefik.http.services.pharmpilot.loadbalancer.server.port=3000"
+      - "traefik.http.routers.pharmuday.rule=Host(`localhost`)" # Change to your domain in production
+      # - "traefik.http.routers.pharmuday.entrypoints=web,websecure" # Uncomment in production
+      # - "traefik.http.routers.pharmuday.tls.certresolver=letsencrypt" # Uncomment in production
+      - "traefik.http.services.pharmuday.loadbalancer.server.port=3000"
 
   db-postgres:
     image: postgres:16
-    container_name: pharmpilot-db
+    container_name: pharmuday-db
     restart: always
     environment:
       POSTGRES_DB: ${POSTY_DB_NAME}
@@ -81,7 +81,7 @@ services:
 
   # pgadmin:
   #   image: dpage/pgadmin4
-  #   container_name: pharmpilot-pgadmin
+  #   container_name: pharmuday-pgadmin
   #   restart: always
   #   environment:
   #     PGADMIN_DEFAULT_EMAIL: ${ADMIN_EMAIL}

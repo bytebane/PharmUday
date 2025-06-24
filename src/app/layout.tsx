@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-	title: 'PharmPilot',
+	title: 'PharmUday',
 	description: 'All-in-one solution for your pharmacy needs',
 	icons: {
 		icon: [
@@ -41,13 +41,13 @@ export const metadata: Metadata = {
 		],
 		shortcut: ['/favicon.ico'],
 	},
-	metadataBase: new URL('https://pharmpilot.reniyal.dev'),
+	metadataBase: new URL('https://pharmuday.reniyal.dev'),
 	manifest: '/manifest.json',
 	appleWebApp: {
-		title: 'PharmPilot',
+		title: 'PharmUday',
 		statusBarStyle: 'default',
 	},
-	applicationName: 'PharmPilot',
+	applicationName: 'PharmUday',
 }
 
 export default function RootLayout({

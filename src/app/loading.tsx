@@ -52,7 +52,7 @@ export default function GlobalLoading() {
 				</div>
 				<span className={`text-center text-xl font-medium text-muted-foreground transition-opacity duration-500 ease-in-out ${isFading ? 'opacity-0' : 'opacity-100'}`}>{displayText}</span>
 			</div>
-			<p className='mt-8 text-sm text-gray-500'>PharmPilot is preparing your experience...</p>
+			<p className='mt-8 text-sm text-gray-500'>PharmUday is preparing your experience...</p>
 		</div>
 	)
 }

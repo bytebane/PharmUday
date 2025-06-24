@@ -45,7 +45,7 @@ async function main() {
 	}
 
 	// --- Seed Admin ---
-	const adminEmail = process.env.APP_ADMIN_EMAIL || 'admin@pharmpilot.local'
+	const adminEmail = process.env.APP_ADMIN_EMAIL || 'admin@pharmuday.local'
 	const adminPassword = process.env.APP_ADMIN_PASSWORD || 'admin1234'
 	const adminName = process.env.APP_ADMIN_NAME || 'Admin User'
 	if (!process.env.APP_ADMIN_EMAIL || !process.env.APP_ADMIN_PASSWORD || !process.env.APP_ADMIN_NAME) {
@@ -77,7 +77,7 @@ async function main() {
 	}
 
 	// --- Seed Customer ---
-	const customerEmail = process.env.APP_CUSTOMER_EMAIL || 'customer@pharmpilot.local'
+	const customerEmail = process.env.APP_CUSTOMER_EMAIL || 'customer@pharmuday.local'
 	const customerPassword = process.env.APP_CUSTOMER_PASSWORD || 'customer1234'
 	const customerName = process.env.APP_CUSTOMER_NAME || 'Customer User'
 	if (!process.env.APP_CUSTOMER_EMAIL || !process.env.APP_CUSTOMER_PASSWORD || !process.env.APP_CUSTOMER_NAME) {

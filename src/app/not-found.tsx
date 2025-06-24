@@ -12,7 +12,7 @@ export default function NotFound() {
 			<div className='flex h-32 w-32 items-center justify-center rounded-full bg-muted'>
 				<Image
 					src='/ppilot.png'
-					alt='PharmPilot Logo'
+					alt='PharmUday Logo'
 					width={80}
 					height={80}
 					className='object-contain'

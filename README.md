@@ -1,10 +1,10 @@
-# PharmPilot
+# PharmUday
 
 All-in-one solution for your pharmacy needs
 
 ## Features
 
-**PharmPilot** is an all-in-one pharmacy management solution designed to streamline and modernize pharmacy operations. Below is a comprehensive list of its core features:
+**PharmUday** is an all-in-one pharmacy management solution designed to streamline and modernize pharmacy operations. Below is a comprehensive list of its core features:
 
 ### 🏪 Inventory Management
 
@@ -79,7 +79,7 @@ All-in-one solution for your pharmacy needs
 - React Query for efficient data fetching and caching.
 - Prisma ORM for database access.
 
-**PharmPilot** is designed to be extensible and production-ready, making it easy to adapt to the needs of any pharmacy or medical supply business.
+**PharmUday** is designed to be extensible and production-ready, making it easy to adapt to the needs of any pharmacy or medical supply business.
 
 ---
 
@@ -101,8 +101,8 @@ Ensure you have the following installed on your system:
 1. **Clone the repository (if you haven't already):**
 
     ```bash
-    git clone https://github.com/bytebane/pharmpilot.git
-    cd pharmpilot
+    git clone https://github.com/bytebane/pharmuday.git
+    cd pharmuday
     ```
 
 2. **Set up environment variables:**
@@ -148,7 +148,7 @@ You should now be able to access the application in your browser at the specifie
 
 ## 🐳 Docker-based Development & Production
 
-You can run PharmPilot in Docker containers for both development and production using the provided `Dockerfile` and `docker-compose.yml`.
+You can run PharmUday in Docker containers for both development and production using the provided `Dockerfile` and `docker-compose.yml`.
 
 ### 1. **Docker-based Development**
 
@@ -195,4 +195,4 @@ docker compose down -v --remove-orphans
 
 ---
 
-Enjoy using **PharmPilot**!
+Enjoy using **PharmUday**!
