@@ -1,3 +1,5 @@
+import { PaymentMethod } from '../src/generated/prisma'
+
 export const reportCategoriesData = [
 	{ name: 'Blood Tests', description: 'Routine and advanced blood investigations' },
 	{ name: 'Imaging', description: 'X-ray, MRI, CT, Ultrasound' },
@@ -2284,5 +2286,147 @@ export const itemsData = [
 		purchase_date: new Date('2024-03-01'),
 		supplierName: 'Cipla Ltd',
 		categoryNames: ['Personal Care'],
+	},
+]
+
+// Customer data for sales
+export const customersData = [
+	{ name: 'John Smith', email: 'john.smith@email.com', phone: '9876543210', address: '123 Oak Street, Mumbai' },
+	{ name: 'Maria Garcia', email: 'maria.garcia@email.com', phone: '9123456789', address: '456 Pine Avenue, Delhi' },
+	{ name: 'David Johnson', email: 'david.johnson@email.com', phone: '9988776655', address: '789 Maple Road, Bangalore' },
+	{ name: 'Sarah Wilson', email: 'sarah.wilson@email.com', phone: '9001122334', address: '321 Cedar Lane, Chennai' },
+	{ name: 'Walk-in Customer', phone: '0000000000', address: 'Pharmacy Counter' },
+]
+
+// Sales data for different time periods (past weeks, months, years)
+export const salesData = [
+	// Recent sales (past week)
+	{
+		saleDate: new Date('2025-06-20T10:30:00Z'),
+		customerName: 'John Smith',
+		paymentMethod: PaymentMethod.CARD,
+		items: [
+			{ itemName: 'Paracetamol', quantity: 2, discount: 0.05 },
+			{ itemName: 'Ibuprofen', quantity: 1, discount: 0.0 },
+		],
+		overallDiscount: 0.0,
+		paymentStatus: 'PAID',
+		notes: 'Regular customer purchase'
+	},
+	{
+		saleDate: new Date('2025-06-22T14:15:00Z'),
+		customerName: 'Maria Garcia',
+		paymentMethod: PaymentMethod.UPI,
+		items: [
+			{ itemName: 'Amoxicillin', quantity: 1, discount: 0.0 },
+			{ itemName: 'Vitamin D3', quantity: 2, discount: 0.1 },
+		],
+		overallDiscount: 0.02,
+		paymentStatus: 'PAID',
+		notes: 'Prescription medicines'
+	},
+	{
+		saleDate: new Date('2025-06-24T16:45:00Z'),
+		customerName: 'Walk-in Customer',
+		paymentMethod: PaymentMethod.CASH,
+		items: [
+			{ itemName: 'Pediatric Paracetamol', quantity: 3, discount: 0.0 },
+		],
+		overallDiscount: 0.0,
+		paymentStatus: 'PAID',
+		notes: 'Walk-in purchase'
+	},
+
+	// Past month sales
+	{
+		saleDate: new Date('2025-05-28T11:20:00Z'),
+		customerName: 'David Johnson',
+		paymentMethod: PaymentMethod.ONLINE_TRANSFER,
+		items: [
+			{ itemName: 'Metformin', quantity: 2, discount: 0.0 },
+			{ itemName: 'Atorvastatin', quantity: 1, discount: 0.05 },
+			{ itemName: 'Omeprazole', quantity: 1, discount: 0.0 },
+		],
+		overallDiscount: 0.05,
+		paymentStatus: 'PAID',
+		notes: 'Monthly medication refill'
+	},
+	{
+		saleDate: new Date('2025-05-15T09:30:00Z'),
+		customerName: 'Sarah Wilson',
+		paymentMethod: PaymentMethod.CARD,
+		items: [
+			{ itemName: 'Cetirizine', quantity: 2, discount: 0.0 },
+			{ itemName: 'Claritin', quantity: 1, discount: 0.0 },
+		],
+		overallDiscount: 0.0,
+		paymentStatus: 'PAID',
+		notes: 'Allergy medication'
+	},
+	{
+		saleDate: new Date('2025-05-08T13:45:00Z'),
+		customerName: 'John Smith',
+		paymentMethod: PaymentMethod.UPI,
+		items: [
+			{ itemName: 'Insulin Syringes', quantity: 1, discount: 0.0 },
+			{ itemName: 'Glucose Test Strips', quantity: 2, discount: 0.15 },
+		],
+		overallDiscount: 0.0,
+		paymentStatus: 'PAID',
+		notes: 'Diabetes management supplies'
+	},
+
+	// Past few months sales
+	{
+		saleDate: new Date('2025-03-20T12:00:00Z'),
+		customerName: 'Maria Garcia',
+		paymentMethod: PaymentMethod.CASH,
+		items: [
+			{ itemName: 'Lisinopril', quantity: 3, discount: 0.0 },
+			{ itemName: 'Calcium Carbonate', quantity: 2, discount: 0.1 },
+		],
+		overallDiscount: 0.03,
+		paymentStatus: 'PAID',
+		notes: 'Cardiac medication refill'
+	},
+	{
+		saleDate: new Date('2025-02-14T15:30:00Z'),
+		customerName: 'Walk-in Customer',
+		paymentMethod: PaymentMethod.CARD,
+		items: [
+			{ itemName: 'Pediatric Ibuprofen', quantity: 2, discount: 0.0 },
+			{ itemName: 'Dextromethorphan Syrup', quantity: 1, discount: 0.0 },
+		],
+		overallDiscount: 0.0,
+		paymentStatus: 'PAID',
+		notes: 'Cold and fever treatment'
+	},
+
+	// Past year sales
+	{
+		saleDate: new Date('2024-12-10T10:45:00Z'),
+		customerName: 'David Johnson',
+		paymentMethod: PaymentMethod.UPI,
+		items: [
+			{ itemName: 'Atorvastatin', quantity: 2, discount: 0.0 },
+			{ itemName: 'Amlodipine', quantity: 2, discount: 0.05 },
+			{ itemName: 'Multivitamin Adult', quantity: 1, discount: 0.0 },
+		],
+		overallDiscount: 0.0,
+		paymentStatus: 'PAID',
+		notes: 'Cardiac medication refill'
+	},
+	{
+		saleDate: new Date('2024-08-25T14:20:00Z'),
+		customerName: 'Sarah Wilson',
+		paymentMethod: PaymentMethod.CASH,
+		items: [
+			{ itemName: 'Ranitidine', quantity: 1, discount: 0.0 },
+			{ itemName: 'Antacid Chewables', quantity: 1, discount: 0.0 },
+			{ itemName: 'Probiotic Blend', quantity: 2, discount: 0.1 },
+		],
+		overallDiscount: 0.05,
+		paymentStatus: 'PAID',
+		notes: 'Digestive health medication'
 	},
 ]

@@ -1,6 +1,6 @@
-import { PrismaClient, Role } from '../src/generated/prisma'
+import { PrismaClient, Role, PaymentMethod } from '../src/generated/prisma'
 import * as argon2 from 'argon2'
-import { categoriesData, itemsData, reportCategoriesData, suppliersData } from './constants'
+import { categoriesData, itemsData, reportCategoriesData, suppliersData, customersData, salesData } from './constants'
 
 const prisma = new PrismaClient()
 
@@ -198,6 +198,120 @@ async function main() {
 			create: { ...data },
 		})
 	}
+
+	// --- Seed Customers ---
+	console.log('Seeding customers...')
+	const customers = []
+	for (const customerData of customersData) {
+		const customer = await prisma.customer.upsert({
+			where: { email: customerData.email || `${customerData.name.toLowerCase().replace(/\s+/g, '.')}@example.com` },
+			update: {},
+			create: {
+				name: customerData.name,
+				email: customerData.email,
+				phone: customerData.phone,
+				address: customerData.address,
+			},
+		})
+		customers.push(customer)
+	}
+
+	// --- Seed Sales Data ---
+	console.log('Seeding sales data...')
+
+	// Get all users for staff assignment
+	const allUsers = await prisma.user.findMany({
+		where: { role: { in: [Role.ADMIN, Role.PHARMACIST] } },
+		select: { id: true, name: true }
+	})
+
+	// Get all items for sale items
+	const allItems = await prisma.item.findMany({
+		select: { id: true, name: true, price: true, tax_rate: true }
+	})
+
+	for (const saleData of salesData) {
+		// Find customer (or use null for walk-in)
+		const customer = customers.find(c => c.name === saleData.customerName)
+
+		// Use admin as staff if available, otherwise first user
+		const staff = allUsers.find(u => u.name?.includes('Admin')) || allUsers[0]
+
+		if (!staff) {
+			console.warn('No staff found for sales, skipping sales seeding')
+			break
+		}
+
+		// Calculate totals
+		let subTotal = 0
+		const saleItems = []
+
+		for (const itemData of saleData.items) {
+			const item = allItems.find(i => i.name === itemData.itemName)
+			if (!item) {
+				console.warn(`Item "${itemData.itemName}" not found, skipping`)
+				continue
+			}
+
+			const priceAtSale = item.price
+			const discountOnItem = priceAtSale * itemData.discount
+			const taxOnItem = (priceAtSale - discountOnItem) * (item.tax_rate || 0)
+			const totalPrice = (priceAtSale * itemData.quantity) - (discountOnItem * itemData.quantity) + (taxOnItem * itemData.quantity)
+
+			subTotal += priceAtSale * itemData.quantity
+
+			saleItems.push({
+				itemId: item.id,
+				quantitySold: itemData.quantity,
+				priceAtSale: priceAtSale,
+				discountOnItem: discountOnItem * itemData.quantity,
+				taxOnItem: taxOnItem * itemData.quantity,
+				totalPrice: totalPrice,
+			})
+		}
+
+		const totalDiscount = subTotal * saleData.overallDiscount
+		const totalTax = (subTotal - totalDiscount) * 0.18 // Assuming 18% GST
+		const grandTotal = subTotal - totalDiscount + totalTax
+		const amountPaid = saleData.paymentStatus === 'PAID' ? grandTotal : 0
+
+		// Create sale
+		const sale = await prisma.sale.create({
+			data: {
+				saleDate: saleData.saleDate,
+				subTotal: subTotal,
+				totalDiscount: totalDiscount,
+				totalTax: totalTax,
+				grandTotal: grandTotal,
+				paymentMethod: saleData.paymentMethod,
+				paymentStatus: saleData.paymentStatus,
+				amountPaid: amountPaid,
+				notes: saleData.notes,
+				staffId: staff.id,
+				customerId: customer?.id,
+			},
+		})
+
+		// Create sale items
+		for (const saleItemData of saleItems) {
+			await prisma.saleItem.create({
+				data: {
+					saleId: sale.id,
+					...saleItemData,
+				},
+			})
+		}
+
+		// Create invoice
+		await prisma.invoice.create({
+			data: {
+				saleId: sale.id,
+				status: saleData.paymentStatus === 'PAID' ? 'ISSUED' : 'DRAFT',
+				notes: `Invoice for sale on ${saleData.saleDate.toDateString()}`,
+			},
+		})
+	}
+
 	console.log('Seeding finished.')
 }
 
