@@ -111,26 +111,26 @@ jobs:
                     # Check if services are running
                     docker compose ps
                   EOF
-            - name: Database operations
-              run: |
-                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmuday
+            # - name: Database operations
+            #   run: |
+            #       ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+            #         cd /root/pharmuday
 
-                    echo "=== Memory before DB operations ==="
-                    free -h
+            #         echo "=== Memory before DB operations ==="
+            #         free -h
 
-                    echo "Running database push..."
-                    docker compose exec -T pharmuday-app npx prisma db push
+            #         echo "Running database push..."
+            #         docker compose exec -T pharmuday-app npx prisma db push
 
-                    echo "Running database seed (if needed)..."
-                    # Only seed if database is empty to avoid memory issues
-                    if ! docker compose exec -T pharmuday-app npx prisma db seed --preview-feature 2>/dev/null; then
-                      echo "Database seeding skipped or failed - this is normal for existing databases"
-                    fi
+            #         echo "Running database seed (if needed)..."
+            #         # Only seed if database is empty to avoid memory issues
+            #         if ! docker compose exec -T pharmuday-app npx prisma db seed --preview-feature 2>/dev/null; then
+            #           echo "Database seeding skipped or failed - this is normal for existing databases"
+            #         fi
 
-                    echo "=== Memory after DB operations ==="
-                    free -h
-                  EOF
+            #         echo "=== Memory after DB operations ==="
+            #         free -h
+            #       EOF
 
             - name: Wait for Elasticsearch to be ready
               run: |
