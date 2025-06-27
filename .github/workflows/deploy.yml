@@ -63,6 +63,7 @@ jobs:
                   REFRESH_TOKEN_RATE_LIMIT=${{ secrets.REFRESH_TOKEN_RATE_LIMIT }}
                   REFRESH_TOKEN_RATE_WINDOW=${{ secrets.REFRESH_TOKEN_RATE_WINDOW }}
                   SESSION_MAX_AGE=${{ secrets.SESSION_MAX_AGE }}
+                  SESSION_REFRESH_INTERVAL=${{secrets.SESSION_REFRESH_INTERVAL}}
                   EOF
 
             - name: Setup server environment
