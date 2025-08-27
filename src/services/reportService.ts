@@ -1,7 +1,8 @@
-import { Report as PrismaReport, ReportCategory as PrismaReportCategory, User as PrismaUser } from '@/generated/prisma'
+import { Report as PrismaReport, ReportCategory as PrismaReportCategory, User as PrismaUser, Customer as PrismaCustomer } from '@/generated/prisma'
 
 export type ReportWithRelations = PrismaReport & {
 	category: PrismaReportCategory
+	customer?: Pick<PrismaCustomer, 'id' | 'name' | 'email' | 'phone'> | null
 	uploadedBy: Pick<PrismaUser, 'id' | 'email'>
 }
 

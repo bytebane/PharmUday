@@ -97,14 +97,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 			},
 		})
 
-		// Update the item in Elasticsearch
-		await esClient.update({
-			index: 'items',
-			id: updatedCustomer.id,
-			doc: {
-				...updatedCustomer,
-			},
-		})
+		// Update the customer in Elasticsearch (optional, fallback to DB if ES unavailable)
+		try {
+			await esClient.update({
+				index: 'customers',
+				id: updatedCustomer.id,
+				doc: {
+					...updatedCustomer,
+				},
+			})
+		} catch (esError) {
+			console.warn('[CUSTOMER_PATCH] Elasticsearch update failed, continuing with DB operation:', esError)
+		}
 
 		return NextResponse.json(updatedCustomer)
 	} catch (error) {
@@ -121,8 +125,20 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 		const { response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN])
 		if (response) return response
 		const { id } = await params
-		// Consider implications: what if customer has sales? Prisma schema has onDelete:SetNull for sales.
+
+		// Delete from database
 		await db.customer.delete({ where: { id } })
+
+		// Delete from Elasticsearch (optional, fallback to DB if ES unavailable)
+		try {
+			await esClient.delete({
+				index: 'customers',
+				id: id,
+			})
+		} catch (esError) {
+			console.warn('[CUSTOMER_DELETE] Elasticsearch delete failed, continuing with DB operation:', esError)
+		}
+
 		return new NextResponse(null, { status: 204 })
 	} catch (error) {
 		console.error('[CUSTOMER_DELETE]', error)
@@ -180,14 +196,18 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 			},
 		})
 
-		// Update the item in Elasticsearch
-		await esClient.update({
-			index: 'items',
-			id: updatedCustomer.id,
-			doc: {
-				...updatedCustomer,
-			},
-		})
+		// Update the customer in Elasticsearch (optional, fallback to DB if ES unavailable)
+		try {
+			await esClient.update({
+				index: 'customers',
+				id: updatedCustomer.id,
+				doc: {
+					...updatedCustomer,
+				},
+			})
+		} catch (esError) {
+			console.warn('[CUSTOMERS_PUT] Elasticsearch update failed, continuing with DB operation:', esError)
+		}
 
 		return NextResponse.json(updatedCustomer)
 	} catch (error) {

@@ -16,17 +16,22 @@ interface ColumnVisibilityToggleProps {
 	onHideAllColumns: () => void
 	isColumnRequired: (columnId: string) => boolean
 	isHydrated?: boolean // Add hydration prop
+	allowedColumns?: string[] // List of allowed columns for restricted users
+	restrictedMode?: boolean // Whether to operate in restricted mode
 }
 
-export function ColumnVisibilityToggle({ columnVisibility, onToggleColumn, onResetToDefaults, onApplyPreset, onShowAllColumns, onHideAllColumns, isColumnRequired, isHydrated = true }: ColumnVisibilityToggleProps) {
+export function ColumnVisibilityToggle({ columnVisibility, onToggleColumn, onResetToDefaults, onApplyPreset, onShowAllColumns, onHideAllColumns, isColumnRequired, isHydrated = true, allowedColumns, restrictedMode = false }: ColumnVisibilityToggleProps) {
 	const [isOpen, setIsOpen] = useState(false)
+
+	// Filter columns based on restrictedMode and allowedColumns
+	const availableColumns = restrictedMode && allowedColumns ? ITEM_COLUMNS.filter(col => allowedColumns.includes(col.id)) : ITEM_COLUMNS
 
 	// Calculate visible columns count - use defaults during SSR
 	const visibleCount = isHydrated ? Object.values(columnVisibility).filter(Boolean).length : Object.values(DEFAULT_COLUMN_VISIBILITY).filter(Boolean).length
-	const totalCount = ITEM_COLUMNS.length
+	const totalCount = availableColumns.length
 
-	const basicColumns = getBasicColumns()
-	const advancedColumns = getAdvancedColumns()
+	const basicColumns = restrictedMode && allowedColumns ? getBasicColumns().filter(col => allowedColumns.includes(col.id)) : getBasicColumns()
+	const advancedColumns = restrictedMode && allowedColumns ? getAdvancedColumns().filter(col => allowedColumns.includes(col.id)) : getAdvancedColumns()
 
 	// Calculate counts for each category - use defaults during SSR
 	const basicVisibleCount = isHydrated ? basicColumns.filter(col => columnVisibility[col.id] ?? true).length : basicColumns.filter(col => DEFAULT_COLUMN_VISIBILITY[col.id] ?? true).length
@@ -100,14 +105,16 @@ export function ColumnVisibilityToggle({ columnVisibility, onToggleColumn, onRes
 							<Star className='h-3 w-3 mr-1' />
 							Basic
 						</Button>
-						<Button
-							variant='outline'
-							size='sm'
-							className='h-7 px-2 text-xs'
-							onClick={onShowAllColumns}>
-							<CheckSquare className='h-3 w-3 mr-1' />
-							Show All
-						</Button>
+						{!restrictedMode && (
+							<Button
+								variant='outline'
+								size='sm'
+								className='h-7 px-2 text-xs'
+								onClick={onShowAllColumns}>
+								<CheckSquare className='h-3 w-3 mr-1' />
+								Show All
+							</Button>
+						)}
 						<Button
 							variant='outline'
 							size='sm'

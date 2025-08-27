@@ -68,6 +68,19 @@ export const DEFAULT_COLUMN_VISIBILITY: ColumnVisibilityState = ITEM_COLUMNS.red
 	{},
 )
 
+// Default visibility for customers/sellers (non-sensitive columns only)
+export const CUSTOMER_DEFAULT_COLUMN_VISIBILITY: ColumnVisibilityState = {
+	name: true,
+	generic_name: true,
+	manufacturer: false, // Hidden by default
+	categories: true,
+	supplierId: true,
+	formulation: false, // Hidden by default
+	strength: false, // Hidden by default
+	schedule: false, // Hidden by default
+	description: true,
+}
+
 // Helper functions
 export const getBasicColumns = () => ITEM_COLUMNS.filter(col => col.category === 'basic')
 export const getAdvancedColumns = () => ITEM_COLUMNS.filter(col => col.category === 'advanced')

@@ -64,14 +64,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 			},
 		})
 
-		// Re-index the updated item in Elasticsearch
-		await esClient.index({
-			index: 'items',
-			id: updatedItem.id,
-			document: {
-				...updatedItem,
-			},
-		})
+		// Re-index the updated item in Elasticsearch (best-effort)
+		try {
+			await esClient.index({
+				index: 'items',
+				id: updatedItem.id,
+				document: { ...updatedItem },
+			})
+		} catch (e) {
+			console.warn('[ITEM_PATCH] ES index skipped:', (e as Error).message)
+		}
 
 		return NextResponse.json(updatedItem)
 	} catch (error) {

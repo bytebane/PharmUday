@@ -6,6 +6,7 @@ export const reportBaseSchema = z.object({
 	reportDate: z.date({ required_error: 'Report date is required.' }),
 	notes: z.string().max(2000).nullable().optional(),
 	categoryId: z.string().min(1, { message: 'Report category is required.' }),
+	customerId: z.string().nullable().optional(), // Customer selection (optional)
 })
 
 export const reportCreateSchema = reportBaseSchema.extend({

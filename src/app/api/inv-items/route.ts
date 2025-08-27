@@ -30,7 +30,7 @@ export async function GET(req: Request) {
 		let items, total
 
 		if (!isAllItems) {
-			// Use Elasticsearch for any filter or search
+			// Use Elasticsearch for any filter or search, with DB fallback when ES is down
 			const must: object[] = []
 			const filter: object[] = []
 
@@ -77,16 +77,50 @@ export async function GET(req: Request) {
 			if (must.length > 0) esQuery.bool.must = must
 			if (filter.length > 0) esQuery.bool.filter = filter
 
-			const esResult = await esClient.search({
-				index: 'items',
-				from: (page - 1) * limit,
-				size: limit,
-				query: esQuery,
-			})
+			try {
+				const esResult = await esClient.search({
+					index: 'items',
+					from: (page - 1) * limit,
+					size: limit,
+					query: esQuery,
+				})
 
-			const hits = esResult.hits.hits
-			items = hits.map(hit => hit._source)
-			total = typeof esResult.hits.total === 'object' ? esResult.hits.total.value : esResult.hits.total
+				const hits = esResult.hits.hits as any[]
+				items = hits.map(hit => (hit as any)._source)
+				total = typeof esResult.hits.total === 'object' ? (esResult.hits.total as any).value : (esResult.hits.total as number)
+			} catch (esError) {
+				// Fallback to DB when Elasticsearch is unavailable
+				const where: any = {}
+				if (search) {
+					where.OR = [{ name: { contains: search, mode: 'insensitive' } }, { generic_name: { contains: search, mode: 'insensitive' } }, { manufacturer: { contains: search, mode: 'insensitive' } }, { description: { contains: search, mode: 'insensitive' } }]
+				}
+				if (status === 'out_of_stock') where.quantity_in_stock = { lte: 0 }
+				if (status === 'expiring_soon') {
+					const today = new Date()
+					const soon = new Date()
+					soon.setDate(today.getDate() + 30)
+					where.expiry_date = { gte: today, lte: soon }
+				}
+				if (status === 'expired') {
+					const today = new Date()
+					where.expiry_date = { lt: today }
+				}
+				if (categoryId && categoryId !== 'all') where.categories = { some: { id: categoryId } }
+				if (supplierId && supplierId !== 'all') where.supplierId = supplierId
+				;[items, total] = await Promise.all([
+					db.item.findMany({
+						where,
+						include: {
+							categories: { select: { id: true, name: true } },
+							supplier: { select: { id: true, name: true } },
+						},
+						orderBy: { createdAt: 'desc' },
+						skip: (page - 1) * limit,
+						take: limit,
+					}),
+					db.item.count({ where }),
+				])
+			}
 		} else {
 			// Use DB for all items (no filters, no search)
 			;[items, total] = await Promise.all([
@@ -134,14 +168,16 @@ export async function POST(req: Request) {
 			},
 		})
 
-		// Index the item in Elasticsearch
-		await esClient.index({
-			index: 'items',
-			id: item.id,
-			document: {
-				...item,
-			},
-		})
+		// Index the item in Elasticsearch (best-effort)
+		try {
+			await esClient.index({
+				index: 'items',
+				id: item.id,
+				document: { ...item },
+			})
+		} catch (e) {
+			console.warn('[ITEMS_POST] ES index skipped:', (e as Error).message)
+		}
 
 		return NextResponse.json(item, { status: 201 })
 	} catch (error) {

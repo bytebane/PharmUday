@@ -1,225 +1,225 @@
-name: Deploy to DigitalOcean Droplet
+# name: Deploy to DigitalOcean Droplet
 
-on:
-    push:
-        branches: [main]
+# on:
+#     push:
+#         branches: [main]
 
-jobs:
-    deploy:
-        runs-on: ubuntu-latest
-        environment: production
+# jobs:
+#     deploy:
+#         runs-on: ubuntu-latest
+#         environment: production
 
-        env:
-            PROD_DOMAIN: ${{ secrets.PROD_DOMAIN }}
+#         env:
+#             PROD_DOMAIN: ${{ secrets.PROD_DOMAIN }}
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+#         steps:
+#             - name: Checkout code
+#               uses: actions/checkout@v4
 
-            - name: Set up SSH
-              uses: webfactory/ssh-agent@v0.9.0
-              with:
-                  ssh-private-key: ${{ secrets.DO_SSH_KEY }}
+#             - name: Set up SSH
+#               uses: webfactory/ssh-agent@v0.9.0
+#               with:
+#                   ssh-private-key: ${{ secrets.DO_SSH_KEY }}
 
-            - name: Prepare docker-compose for production
-              run: |
-                  sed -i "s/Host(\`localhost\`)/Host(\`${{ secrets.PROD_DOMAIN }}\`)/" docker-compose.yml
-                  sed -i 's/# - "traefik.http.routers.pharmuday.entrypoints=web,websecure"/- "traefik.http.routers.pharmuday.entrypoints=web,websecure"/' docker-compose.yml
-                  sed -i 's/# - "traefik.http.routers.pharmuday.tls.certresolver=letsencrypt"/- "traefik.http.routers.pharmuday.tls.certresolver=letsencrypt"/' docker-compose.yml
-                  sed -i "s/\${ADMIN_EMAIL}/${{ secrets.ADMIN_EMAIL }}/" docker-compose.yml
-              #   Optionally, remove the Traefik dashboard in production
-              #   sed -i '/--api.insecure=true/d' docker-compose.yml
+#             - name: Prepare docker-compose for production
+#               run: |
+#                   sed -i "s/Host(\`localhost\`)/Host(\`${{ secrets.PROD_DOMAIN }}\`)/" docker-compose.yml
+#                   sed -i 's/# - "traefik.http.routers.pharmuday.entrypoints=web,websecure"/- "traefik.http.routers.pharmuday.entrypoints=web,websecure"/' docker-compose.yml
+#                   sed -i 's/# - "traefik.http.routers.pharmuday.tls.certresolver=letsencrypt"/- "traefik.http.routers.pharmuday.tls.certresolver=letsencrypt"/' docker-compose.yml
+#                   sed -i "s/\${ADMIN_EMAIL}/${{ secrets.ADMIN_EMAIL }}/" docker-compose.yml
+#               #   Optionally, remove the Traefik dashboard in production
+#               #   sed -i '/--api.insecure=true/d' docker-compose.yml
 
-            - name: Create .env file for production
-              run: |
-                  cat <<EOF > .env
-                  NODE_ENV=production
-                  NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
-                  NEXTAUTH_URL=https://${{ secrets.PROD_DOMAIN }}
-                  BLOB_READ_WRITE_TOKEN=${{ secrets.BLOB_READ_WRITE_TOKEN }}
-                  APP_SUPER_ADMIN_NAME=${{ secrets.APP_SUPER_ADMIN_NAME }}
-                  APP_SUPER_ADMIN_EMAIL=${{ secrets.APP_SUPER_ADMIN_EMAIL }}
-                  APP_SUPER_ADMIN_PASSWORD=${{ secrets.APP_SUPER_ADMIN_PASSWORD }}
-                  APP_ADMIN_NAME=${{secrets.APP_ADMIN_NAME}}
-                  APP_ADMIN_EMAIL=${{ secrets.APP_ADMIN_EMAIL }}
-                  APP_ADMIN_PASSWORD=${{ secrets.APP_ADMIN_PASSWORD }}
-                  APP_CUSTOMER_NAME=${{ secrets.APP_CUSTOMER_NAME }}
-                  APP_CUSTOMER_EMAIL=${{ secrets.APP_CUSTOMER_EMAIL }}
-                  APP_CUSTOMER_PASSWORD=${{ secrets.APP_CUSTOMER_PASSWORD }}
+#             - name: Create .env file for production
+#               run: |
+#                   cat <<EOF > .env
+#                   NODE_ENV=production
+#                   NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
+#                   NEXTAUTH_URL=https://${{ secrets.PROD_DOMAIN }}
+#                   BLOB_READ_WRITE_TOKEN=${{ secrets.BLOB_READ_WRITE_TOKEN }}
+#                   APP_SUPER_ADMIN_NAME=${{ secrets.APP_SUPER_ADMIN_NAME }}
+#                   APP_SUPER_ADMIN_EMAIL=${{ secrets.APP_SUPER_ADMIN_EMAIL }}
+#                   APP_SUPER_ADMIN_PASSWORD=${{ secrets.APP_SUPER_ADMIN_PASSWORD }}
+#                   APP_ADMIN_NAME=${{secrets.APP_ADMIN_NAME}}
+#                   APP_ADMIN_EMAIL=${{ secrets.APP_ADMIN_EMAIL }}
+#                   APP_ADMIN_PASSWORD=${{ secrets.APP_ADMIN_PASSWORD }}
+#                   APP_CUSTOMER_NAME=${{ secrets.APP_CUSTOMER_NAME }}
+#                   APP_CUSTOMER_EMAIL=${{ secrets.APP_CUSTOMER_EMAIL }}
+#                   APP_CUSTOMER_PASSWORD=${{ secrets.APP_CUSTOMER_PASSWORD }}
 
-                  ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-                  POSTY_PASSWORD=${{ secrets.POSTY_PASSWORD }}
-                  POSTY_DB_NAME=${{ secrets.POSTY_DB_NAME }}
-                  PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}
-                  DATABASE_URL=${{ secrets.DATABASE_URL }}
+#                   ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+#                   POSTY_PASSWORD=${{ secrets.POSTY_PASSWORD }}
+#                   POSTY_DB_NAME=${{ secrets.POSTY_DB_NAME }}
+#                   PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}
+#                   DATABASE_URL=${{ secrets.DATABASE_URL }}
 
-                  ELASTICSEARCH_URL=${{ secrets.ELASTICSEARCH_URL }}
-                  ELASTICSEARCH_USERNAME=${{ secrets.ELASTICSEARCH_USERNAME }}
-                  ELASTICSEARCH_PASSWORD=${{ secrets.ELASTICSEARCH_PASSWORD }}
-                  JWT_MAX_AGE=${{ secrets.JWT_MAX_AGE }}
-                  MAX_CONCURRENT_SESSIONS=${{ secrets.MAX_CONCURRENT_SESSIONS }}
-                  REFRESH_TOKEN_MAX_AGE=${{ secrets.REFRESH_TOKEN_MAX_AGE }}
-                  REFRESH_TOKEN_EXPIRY_THRESHOLD=${{ secrets.REFRESH_TOKEN_EXPIRY_THRESHOLD }}
-                  REFRESH_TOKEN_RATE_LIMIT=${{ secrets.REFRESH_TOKEN_RATE_LIMIT }}
-                  REFRESH_TOKEN_RATE_WINDOW=${{ secrets.REFRESH_TOKEN_RATE_WINDOW }}
-                  SESSION_MAX_AGE=${{ secrets.SESSION_MAX_AGE }}
-                  SESSION_REFRESH_INTERVAL=${{secrets.SESSION_REFRESH_INTERVAL}}
-                  EOF
+#                   ELASTICSEARCH_URL=${{ secrets.ELASTICSEARCH_URL }}
+#                   ELASTICSEARCH_USERNAME=${{ secrets.ELASTICSEARCH_USERNAME }}
+#                   ELASTICSEARCH_PASSWORD=${{ secrets.ELASTICSEARCH_PASSWORD }}
+#                   JWT_MAX_AGE=${{ secrets.JWT_MAX_AGE }}
+#                   MAX_CONCURRENT_SESSIONS=${{ secrets.MAX_CONCURRENT_SESSIONS }}
+#                   REFRESH_TOKEN_MAX_AGE=${{ secrets.REFRESH_TOKEN_MAX_AGE }}
+#                   REFRESH_TOKEN_EXPIRY_THRESHOLD=${{ secrets.REFRESH_TOKEN_EXPIRY_THRESHOLD }}
+#                   REFRESH_TOKEN_RATE_LIMIT=${{ secrets.REFRESH_TOKEN_RATE_LIMIT }}
+#                   REFRESH_TOKEN_RATE_WINDOW=${{ secrets.REFRESH_TOKEN_RATE_WINDOW }}
+#                   SESSION_MAX_AGE=${{ secrets.SESSION_MAX_AGE }}
+#                   SESSION_REFRESH_INTERVAL=${{secrets.SESSION_REFRESH_INTERVAL}}
+#                   EOF
 
-            - name: Setup server environment
-              run: |
-                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    # Check and setup swap if not exists
-                    if [ ! -f /swapfile ]; then
-                      echo "Setting up swap memory..."
-                      fallocate -l 2G /swapfile
-                      chmod 600 /swapfile
-                      mkswap /swapfile
-                      swapon /swapfile
-                      echo '/swapfile none swap sw 0 0' >> /etc/fstab
-                      echo "Swap setup complete"
-                    fi
+#             - name: Setup server environment
+#               run: |
+#                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+#                     # Check and setup swap if not exists
+#                     if [ ! -f /swapfile ]; then
+#                       echo "Setting up swap memory..."
+#                       fallocate -l 2G /swapfile
+#                       chmod 600 /swapfile
+#                       mkswap /swapfile
+#                       swapon /swapfile
+#                       echo '/swapfile none swap sw 0 0' >> /etc/fstab
+#                       echo "Swap setup complete"
+#                     fi
 
-                    # Check available memory
-                    echo "=== Memory Status ==="
-                    free -h
-                    echo "===================="
-                  EOF
-            - name: Copy files to Droplet
-              run: |
-                  rsync -avz --exclude='.git*' --exclude='node_modules' -e "ssh -o StrictHostKeyChecking=no" ./ root@${{ secrets.DO_DROPLET_IP }}:/root/pharmuday
+#                     # Check available memory
+#                     echo "=== Memory Status ==="
+#                     free -h
+#                     echo "===================="
+#                   EOF
+#             - name: Copy files to Droplet
+#               run: |
+#                   rsync -avz --exclude='.git*' --exclude='node_modules' -e "ssh -o StrictHostKeyChecking=no" ./ root@${{ secrets.DO_DROPLET_IP }}:/root/pharmuday
 
-            - name: Stop existing services gracefully
-              run: |
-                      ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                        cd /root/pharmuday
-                        echo "Stopping services gracefully..."
-                        docker compose down --timeout 30
+#             - name: Stop existing services gracefully
+#               run: |
+#                       ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+#                         cd /root/pharmuday
+#                         echo "Stopping services gracefully..."
+#                         docker compose down --timeout 30
 
-                        # Clean up old images to free space
-                        docker image prune -f
-                      EOF
-            - name: Deploy with Docker Compose
-              run: |
-                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmuday
-                    echo "Starting services..."
-                    docker compose up -d --build
+#                         # Clean up old images to free space
+#                         docker image prune -f
+#                       EOF
+#             - name: Deploy with Docker Compose
+#               run: |
+#                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+#                     cd /root/pharmuday
+#                     echo "Starting services..."
+#                     docker compose up -d --build
 
-                    echo "Waiting for services to be ready..."
-                    sleep 30
+#                     echo "Waiting for services to be ready..."
+#                     sleep 30
 
-                    # Check if services are running
-                    docker compose ps
-                  EOF
-            # - name: Database operations
-            #   run: |
-            #       ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-            #         cd /root/pharmuday
+#                     # Check if services are running
+#                     docker compose ps
+#                   EOF
+#             # - name: Database operations
+#             #   run: |
+#             #       ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+#             #         cd /root/pharmuday
 
-            #         echo "=== Memory before DB operations ==="
-            #         free -h
+#             #         echo "=== Memory before DB operations ==="
+#             #         free -h
 
-            #         echo "Running database push..."
-            #         docker compose exec -T pharmuday-app npx prisma db push
+#             #         echo "Running database push..."
+#             #         docker compose exec -T pharmuday-app npx prisma db push
 
-            #         echo "Running database seed (if needed)..."
-            #         # Only seed if database is empty to avoid memory issues
-            #         if ! docker compose exec -T pharmuday-app npx prisma db seed --preview-feature 2>/dev/null; then
-            #           echo "Database seeding skipped or failed - this is normal for existing databases"
-            #         fi
+#             #         echo "Running database seed (if needed)..."
+#             #         # Only seed if database is empty to avoid memory issues
+#             #         if ! docker compose exec -T pharmuday-app npx prisma db seed --preview-feature 2>/dev/null; then
+#             #           echo "Database seeding skipped or failed - this is normal for existing databases"
+#             #         fi
 
-            #         echo "=== Memory after DB operations ==="
-            #         free -h
-            #       EOF
+#             #         echo "=== Memory after DB operations ==="
+#             #         free -h
+#             #       EOF
 
-            - name: Wait for Elasticsearch to be ready
-              run: |
-                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmuday
+#             - name: Wait for Elasticsearch to be ready
+#               run: |
+#                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+#                     cd /root/pharmuday
 
-                    echo "Waiting for Elasticsearch to be ready..."
-                    for i in {1..30}; do
-                      if docker compose exec -T elastic-search curl -f -u elastic:${{ secrets.ELASTICSEARCH_PASSWORD }} http://localhost:9200/_cluster/health 2>/dev/null; then
-                        echo "Elasticsearch is ready!"
-                        break
-                      fi
-                      echo "Waiting for Elasticsearch... ($i/30)"
-                      sleep 10
-                    done
-                  EOF
+#                     echo "Waiting for Elasticsearch to be ready..."
+#                     for i in {1..30}; do
+#                       if docker compose exec -T elastic-search curl -f -u elastic:${{ secrets.ELASTICSEARCH_PASSWORD }} http://localhost:9200/_cluster/health 2>/dev/null; then
+#                         echo "Elasticsearch is ready!"
+#                         break
+#                       fi
+#                       echo "Waiting for Elasticsearch... ($i/30)"
+#                       sleep 10
+#                     done
+#                   EOF
 
-            - name: Sync data to Elasticsearch
-              run: |
-                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmuday
+#             - name: Sync data to Elasticsearch
+#               run: |
+#                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+#                     cd /root/pharmuday
 
-                    echo "=== Memory before Elasticsearch sync ==="
-                    free -h
+#                     echo "=== Memory before Elasticsearch sync ==="
+#                     free -h
 
-                    echo "Syncing data to Elasticsearch..."
-                    # Run the sync script with memory monitoring
-                    if docker compose exec -T pharmuday-app npx tsx scripts/sync-items-elastic.ts; then
-                      echo "✅ Elasticsearch sync completed successfully"
-                    else
-                      echo "⚠️  Elasticsearch sync failed - this might be due to memory constraints"
-                      echo "You can manually run the sync later with: docker compose exec pharmuday-app npx tsx scripts/sync-items-elastic.ts"
-                    fi
+#                     echo "Syncing data to Elasticsearch..."
+#                     # Run the sync script with memory monitoring
+#                     if docker compose exec -T pharmuday-app npx tsx scripts/sync-items-elastic.ts; then
+#                       echo "✅ Elasticsearch sync completed successfully"
+#                     else
+#                       echo "⚠️  Elasticsearch sync failed - this might be due to memory constraints"
+#                       echo "You can manually run the sync later with: docker compose exec pharmuday-app npx tsx scripts/sync-items-elastic.ts"
+#                     fi
 
-                    echo "=== Memory after Elasticsearch sync ==="
-                    free -h
-                  EOF
+#                     echo "=== Memory after Elasticsearch sync ==="
+#                     free -h
+#                   EOF
 
-            - name: Health check
-              run: |
-                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    cd /root/pharmuday
+#             - name: Health check
+#               run: |
+#                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+#                     cd /root/pharmuday
 
-                    echo "=== Final Health Check ==="
-                    docker compose ps
+#                     echo "=== Final Health Check ==="
+#                     docker compose ps
 
-                    echo "=== Memory Usage ==="
-                    free -h
+#                     echo "=== Memory Usage ==="
+#                     free -h
 
-                    echo "=== Disk Usage ==="
-                    df -h
+#                     echo "=== Disk Usage ==="
+#                     df -h
 
-                    # Test if app is responding
-                    sleep 10
-                    if curl -f http://localhost:3000/api/health 2>/dev/null || curl -f http://localhost 2>/dev/null; then
-                      echo "✅ Application is responding"
-                    else
-                      echo "⚠️  Application may not be responding yet"
-                    fi
+#                     # Test if app is responding
+#                     sleep 10
+#                     if curl -f http://localhost:3000/api/health 2>/dev/null || curl -f http://localhost 2>/dev/null; then
+#                       echo "✅ Application is responding"
+#                     else
+#                       echo "⚠️  Application may not be responding yet"
+#                     fi
 
-                    # Test Elasticsearch connectivity
-                    if docker compose exec -T pharmuday-app node -e "
-                      const { esClient } = require('./dist/lib/elastic');
-                      esClient.ping().then(() => console.log('✅ Elasticsearch connectivity OK')).catch(e => console.log('⚠️  Elasticsearch connectivity issue:', e.message));
-                    " 2>/dev/null; then
-                      echo "Elasticsearch check completed"
-                    fi
-                  EOF
+#                     # Test Elasticsearch connectivity
+#                     if docker compose exec -T pharmuday-app node -e "
+#                       const { esClient } = require('./dist/lib/elastic');
+#                       esClient.ping().then(() => console.log('✅ Elasticsearch connectivity OK')).catch(e => console.log('⚠️  Elasticsearch connectivity issue:', e.message));
+#                     " 2>/dev/null; then
+#                       echo "Elasticsearch check completed"
+#                     fi
+#                   EOF
 
-            - name: Notify deployment success
-              run: echo "✅ Deployment to DigitalOcean Droplet successful!"
+#             - name: Notify deployment success
+#               run: echo "✅ Deployment to DigitalOcean Droplet successful!"
 
-            - name: Notify deployment failure
-              if: failure()
-              run: echo "❌ Deployment to DigitalOcean Droplet failed!"
+#             - name: Notify deployment failure
+#               if: failure()
+#               run: echo "❌ Deployment to DigitalOcean Droplet failed!"
 
-            - name: Conservative cleanup
-              if: always()
-              run: |
-                  ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
-                    # Only clean unused images and build cache, preserve volumes
-                    docker image prune -f
-                    docker builder prune -f
+#             - name: Conservative cleanup
+#               if: always()
+#               run: |
+#                   ssh -o StrictHostKeyChecking=no root@${{ secrets.DO_DROPLET_IP }} << 'EOF'
+#                     # Only clean unused images and build cache, preserve volumes
+#                     docker image prune -f
+#                     docker builder prune -f
 
-                    # Don't prune volumes in production!
-                    # docker volume prune -f  # REMOVED - this can delete your data!
+#                     # Don't prune volumes in production!
+#                     # docker volume prune -f  # REMOVED - this can delete your data!
 
-                    echo "=== Final system status ==="
-                    docker compose ps
-                    free -h
-                  EOF
+#                     echo "=== Final system status ==="
+#                     docker compose ps
+#                     free -h
+#                   EOF

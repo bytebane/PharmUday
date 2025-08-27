@@ -130,7 +130,7 @@ export default async function DashboardPage() {
 						title='My Orders'
 						value={'View'} // You might fetch a count of their orders
 						iconName='Package' // Example icon
-						link='/sales/history?user=me' // Example link, adjust API to filter by current user
+						link='/orders' // Changed from '/sales/history?user=me' to '/orders'
 						linkText='View Order History'
 					/>
 					<StatCard

@@ -24,6 +24,7 @@ import { useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { useColumnVisibility } from '@/hooks/useColumnVisibility'
 import { ColumnVisibilityToggle } from '@/components/features/inventory/column-visibility-toggle'
+import { CUSTOMER_DEFAULT_COLUMN_VISIBILITY } from '@/types/column-visibility'
 import Image from 'next/image'
 import { DataTableActions } from '@/components/custom/data-table-actions'
 
@@ -77,6 +78,40 @@ export function ItemList() {
 
 	// Column visibility
 	const { columnVisibility, toggleColumn, resetToDefaults, isColumnVisible, applyPreset, showAllColumns, hideAllColumns, isColumnRequired, isHydrated } = useColumnVisibility()
+
+	// Define allowed columns for customers and sellers (non-sensitive data only)
+	const allowedColumnsForCustomerSeller = ['name', 'generic_name', 'manufacturer', 'categories', 'supplierId', 'formulation', 'strength', 'schedule', 'description']
+
+	// Role-based column visibility for customers/sellers
+	const isCustomerOrSeller = session?.user?.role === Role.CUSTOMER || session?.user?.role === Role.SELLER
+	const effectiveColumnVisibility = isCustomerOrSeller ? Object.fromEntries(Object.entries(columnVisibility).filter(([key]) => allowedColumnsForCustomerSeller.includes(key))) : columnVisibility
+
+	// Custom reset function for customers/sellers
+	const handleResetToDefaults = useCallback(() => {
+		if (isCustomerOrSeller) {
+			// For customers/sellers, reset to customer-specific defaults
+			Object.keys(CUSTOMER_DEFAULT_COLUMN_VISIBILITY).forEach(columnId => {
+				toggleColumn(columnId)
+			})
+		} else {
+			resetToDefaults()
+		}
+	}, [isCustomerOrSeller, toggleColumn, resetToDefaults])
+
+	// Initialize customer defaults on first visit
+	useEffect(() => {
+		if (isCustomerOrSeller && isHydrated) {
+			// Check if customer has any settings, if not, apply customer defaults
+			const hasCustomerSettings = allowedColumnsForCustomerSeller.some(col => columnVisibility.hasOwnProperty(col))
+			if (!hasCustomerSettings) {
+				Object.entries(CUSTOMER_DEFAULT_COLUMN_VISIBILITY).forEach(([columnId, isVisible]) => {
+					if (columnVisibility[columnId] !== isVisible) {
+						toggleColumn(columnId)
+					}
+				})
+			}
+		}
+	}, [isCustomerOrSeller, isHydrated, columnVisibility, allowedColumnsForCustomerSeller, toggleColumn])
 
 	// Data fetching
 	const {
@@ -590,16 +625,26 @@ export function ItemList() {
 			},
 		]
 
-		// Filter visible columns
+		// Define allowed columns for customers and sellers (non-sensitive data only)
+		const allowedColumnsForCustomerSeller = ['name', 'generic_name', 'manufacturer', 'categories', 'supplierId', 'formulation', 'strength', 'schedule', 'description']
+
+		// Filter visible columns based on role and visibility settings
 		const visibleColumns = baseColumns.filter(column => {
 			// For TanStack table, columns with accessorKey automatically get that as their id
 			// If a column has an explicit id, use that, otherwise use accessorKey
 			const columnId = column.id || (column as any).accessorKey
+
+			// If user is customer or seller, only show allowed columns
+			if (session?.user?.role === Role.CUSTOMER || session?.user?.role === Role.SELLER) {
+				return columnId && allowedColumnsForCustomerSeller.includes(columnId) && effectiveColumnVisibility[columnId]
+			}
+
+			// For admin/pharmacist, use normal column visibility settings
 			return columnId && isColumnVisible(columnId)
 		})
 
-		// Add actions column for admin/pharmacist
-		if (session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST) {
+		// Add actions column for admin/pharmacist/super_admin only
+		if (session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST || session?.user?.role === Role.SUPER_ADMIN) {
 			visibleColumns.push({
 				id: 'actions',
 				header: () => <div className='text-right'>Actions</div>,
@@ -673,77 +718,82 @@ export function ItemList() {
 		<div className='w-full'>
 			{/* Filter/search controls */}
 			<div className='mb-4 flex flex-wrap items-center gap-2 rounded-md border p-4'>
-				<Button
-					asChild
-					className='ml-2'
-					disabled={isImporting}>
-					<label>
-						{isImporting ? (
-							<>
-								<Loader2 className='mr-2 h-4 w-4 animate-spin' />
-								Importing...
-							</>
-						) : (
-							<>Import from Excel</>
-						)}
-						<input
-							type='file'
-							accept='.xlsx,.xls'
-							onChange={handleImport}
-							style={{ display: 'none' }}
-							disabled={isImporting}
-						/>
-					</label>
-				</Button>
-				<Button
-					onClick={handleExport}
-					className='ml-2'
-					disabled={isExporting}>
-					{isExporting ? (
-						<>
-							<Loader2 className='mr-2 h-4 w-4 animate-spin' />
-							Exporting...
-						</>
-					) : (
-						<>Export to Excel</>
-					)}
-				</Button>
-				<Button
-					onClick={() => {
-						// Define the columns you want in the template
-						const templateData = [
-							{
-								name: '',
-								manufacturer: '',
-								generic_name: '',
-								formulation: '',
-								strength: '',
-								unit: '',
-								schedule: '',
-								description: '',
-								units_per_pack: '',
-								price: '',
-								tax_rate: '',
-								discount: '',
-								reorder_level: '',
-								isActive: '',
-								isAvailable: '',
-								quantity_in_stock: '',
-								expiry_date: '',
-								purchase_date: '',
-								supplierId: '',
-								// Add/remove fields as needed
-							},
-						]
-						const ws = XLSX.utils.json_to_sheet(templateData)
-						const wb = XLSX.utils.book_new()
-						XLSX.utils.book_append_sheet(wb, ws, 'Template')
-						XLSX.writeFile(wb, 'meds-import-template.xlsx')
-					}}
-					className='ml-2'
-					variant='outline'>
-					Download Excel Template
-				</Button>
+				{/* Administrative controls - only for admin/pharmacist/super_admin */}
+				{(session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST || session?.user?.role === Role.SUPER_ADMIN) && (
+					<>
+						<Button
+							asChild
+							className='ml-2'
+							disabled={isImporting}>
+							<label>
+								{isImporting ? (
+									<>
+										<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+										Importing...
+									</>
+								) : (
+									<>Import from Excel</>
+								)}
+								<input
+									type='file'
+									accept='.xlsx,.xls'
+									onChange={handleImport}
+									className='hidden'
+									disabled={isImporting}
+								/>
+							</label>
+						</Button>
+						<Button
+							onClick={handleExport}
+							className='ml-2'
+							disabled={isExporting}>
+							{isExporting ? (
+								<>
+									<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+									Exporting...
+								</>
+							) : (
+								<>Export to Excel</>
+							)}
+						</Button>
+						<Button
+							onClick={() => {
+								// Define the columns you want in the template
+								const templateData = [
+									{
+										name: '',
+										manufacturer: '',
+										generic_name: '',
+										formulation: '',
+										strength: '',
+										unit: '',
+										schedule: '',
+										description: '',
+										units_per_pack: '',
+										price: '',
+										tax_rate: '',
+										discount: '',
+										reorder_level: '',
+										isActive: '',
+										isAvailable: '',
+										quantity_in_stock: '',
+										expiry_date: '',
+										purchase_date: '',
+										supplierId: '',
+										// Add/remove fields as needed
+									},
+								]
+								const ws = XLSX.utils.json_to_sheet(templateData)
+								const wb = XLSX.utils.book_new()
+								XLSX.utils.book_append_sheet(wb, ws, 'Template')
+								XLSX.writeFile(wb, 'meds-import-template.xlsx')
+							}}
+							className='ml-2'
+							variant='outline'>
+							Download Excel Template
+						</Button>
+					</>
+				)}
 				{/* Search input */}
 				{isLoadingRelated ? (
 					<Skeleton className='h-10 w-[180px]' />
@@ -823,35 +873,36 @@ export function ItemList() {
 					</Select>
 				)}
 
-				{/* Status filter */}
-				{isLoadingRelated ? (
-					<Skeleton className='h-10 w-[180px]' />
-				) : (
-					<Select
-						value={filters.status ?? 'all'}
-						onValueChange={value => {
-							const status = value === 'all' ? undefined : value
-							setFilters(f => ({ ...f, status }))
-							setColumnFilters(prev => {
-								const filtered = prev.filter(f => f.id !== 'expiry_date' && f.id !== 'quantity_in_stock')
-								if (status === 'expiring_soon') return [...filtered, { id: 'expiry_date', value: 'expiring_soon' }]
-								if (status === 'expired') return [...filtered, { id: 'expiry_date', value: 'expired' }]
-								if (status === 'out_of_stock') return [...filtered, { id: 'quantity_in_stock', value: 'out_of_stock' }]
-								return filtered
-							})
-							setPagination(p => ({ ...p, pageIndex: 0 }))
-						}}>
-						<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
-							<SelectValue placeholder='Stock/Expiry Status' />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value='all'>All Status</SelectItem>
-							<SelectItem value='out_of_stock'>Out of Stock</SelectItem>
-							<SelectItem value='expiring_soon'>Expiring Soon (30d)</SelectItem>
-							<SelectItem value='expired'>Expired</SelectItem>
-						</SelectContent>
-					</Select>
-				)}
+				{/* Status filter - only for admin/pharmacist/super_admin */}
+				{(session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST || session?.user?.role === Role.SUPER_ADMIN) &&
+					(isLoadingRelated ? (
+						<Skeleton className='h-10 w-[180px]' />
+					) : (
+						<Select
+							value={filters.status ?? 'all'}
+							onValueChange={value => {
+								const status = value === 'all' ? undefined : value
+								setFilters(f => ({ ...f, status }))
+								setColumnFilters(prev => {
+									const filtered = prev.filter(f => f.id !== 'expiry_date' && f.id !== 'quantity_in_stock')
+									if (status === 'expiring_soon') return [...filtered, { id: 'expiry_date', value: 'expiring_soon' }]
+									if (status === 'expired') return [...filtered, { id: 'expiry_date', value: 'expired' }]
+									if (status === 'out_of_stock') return [...filtered, { id: 'quantity_in_stock', value: 'out_of_stock' }]
+									return filtered
+								})
+								setPagination(p => ({ ...p, pageIndex: 0 }))
+							}}>
+							<SelectTrigger className='h-10 w-full sm:w-auto min-w-[150px]'>
+								<SelectValue placeholder='Stock/Expiry Status' />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value='all'>All Status</SelectItem>
+								<SelectItem value='out_of_stock'>Out of Stock</SelectItem>
+								<SelectItem value='expiring_soon'>Expiring Soon (30d)</SelectItem>
+								<SelectItem value='expired'>Expired</SelectItem>
+							</SelectContent>
+						</Select>
+					))}
 
 				{/* Reset button */}
 				{isAnyFilterActive && (
@@ -869,16 +920,31 @@ export function ItemList() {
 				)}
 
 				{/* Column visibility toggle */}
-				<ColumnVisibilityToggle
-					columnVisibility={columnVisibility}
-					onToggleColumn={toggleColumn}
-					onResetToDefaults={resetToDefaults}
-					onApplyPreset={applyPreset}
-					onShowAllColumns={showAllColumns}
-					onHideAllColumns={hideAllColumns}
-					isColumnRequired={isColumnRequired}
-					isHydrated={isHydrated}
-				/>
+				{session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST || session?.user?.role === Role.SUPER_ADMIN ? (
+					<ColumnVisibilityToggle
+						columnVisibility={columnVisibility}
+						onToggleColumn={toggleColumn}
+						onResetToDefaults={resetToDefaults}
+						onApplyPreset={applyPreset}
+						onShowAllColumns={showAllColumns}
+						onHideAllColumns={hideAllColumns}
+						isColumnRequired={isColumnRequired}
+						isHydrated={isHydrated}
+					/>
+				) : (
+					<ColumnVisibilityToggle
+						columnVisibility={effectiveColumnVisibility}
+						onToggleColumn={toggleColumn}
+						onResetToDefaults={handleResetToDefaults}
+						onApplyPreset={applyPreset}
+						onShowAllColumns={showAllColumns}
+						onHideAllColumns={hideAllColumns}
+						isColumnRequired={isColumnRequired}
+						isHydrated={isHydrated}
+						allowedColumns={allowedColumnsForCustomerSeller}
+						restrictedMode={true}
+					/>
+				)}
 			</div>
 
 			{/* Data Table */}
@@ -899,7 +965,7 @@ export function ItemList() {
 			/>
 
 			{/* Floating Action Button (FAB) for Add New Item */}
-			{(session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST) && (
+			{(session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST || session?.user?.role === Role.SUPER_ADMIN) && (
 				<AddFAB
 					onClick={handleAddNew}
 					ariaLabel='Add New Item'

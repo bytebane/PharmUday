@@ -22,26 +22,31 @@ export async function GET(req: Request) {
 		let customers, total
 
 		if (search) {
-			// where.OR = [{ name: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }, { phone: { contains: search, mode: 'insensitive' } }]
 			const wildcardSearch = `*${search.toLowerCase()}*`
-			const esResult = await esClient.search({
-				index: 'customers',
-				from: (page - 1) * limit,
-				size: limit,
-				query: {
-					query_string: {
-						query: [`name:${wildcardSearch}`, `email:${wildcardSearch}`, `phone:${wildcardSearch}`].join(' OR '),
-
-						fields: ['name', 'email', 'phone'],
-						analyze_wildcard: true,
-						default_operator: 'OR',
+			try {
+				const esResult = await esClient.search({
+					index: 'customers',
+					from: (page - 1) * limit,
+					size: limit,
+					query: {
+						query_string: {
+							query: [`name:${wildcardSearch}`, `email:${wildcardSearch}`, `phone:${wildcardSearch}`].join(' OR '),
+							fields: ['name', 'email', 'phone'],
+							analyze_wildcard: true,
+							default_operator: 'OR',
+						},
 					},
-				},
-			})
-			const hits = esResult.hits.hits
-
-			customers = hits.map(hit => hit._source)
-			total = typeof esResult.hits.total === 'object' ? esResult.hits.total.value : esResult.hits.total
+				})
+				const hits = esResult.hits.hits as any[]
+				customers = hits.map(hit => (hit as any)._source)
+				total = typeof esResult.hits.total === 'object' ? (esResult.hits.total as any).value : (esResult.hits.total as number)
+			} catch (esError) {
+				// Fallback to DB search if ES is unavailable
+				const where = {
+					OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { email: { contains: search, mode: 'insensitive' as const } }, { phone: { contains: search, mode: 'insensitive' as const } }],
+				}
+				;[customers, total] = await Promise.all([db.customer.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }), db.customer.count({ where })])
+			}
 		} else {
 			;[customers, total] = await Promise.all([
 				db.customer.findMany({
@@ -107,14 +112,16 @@ export async function POST(req: NextRequest) {
 			},
 		})
 
-		// Index the item in Elasticsearch
-		await esClient.index({
-			index: 'items',
-			id: newCustomer.id,
-			document: {
-				...newCustomer,
-			},
-		})
+		// Index the customer in Elasticsearch (best-effort)
+		try {
+			await esClient.index({
+				index: 'customers',
+				id: newCustomer.id,
+				document: { ...newCustomer },
+			})
+		} catch (e) {
+			console.warn('[CUSTOMERS_POST] ES index skipped:', (e as Error).message)
+		}
 
 		return NextResponse.json(newCustomer, { status: 201 })
 	} catch (error) {

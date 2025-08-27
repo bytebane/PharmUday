@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { toast } from 'sonner'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Report as PrismaReport, ReportCategory as PrismaReportCategory } from '@/generated/prisma'
+import { Report as PrismaReport, ReportCategory as PrismaReportCategory, Customer as PrismaCustomer } from '@/generated/prisma'
 import { reportCreateSchema, reportPatchSchema, reportBaseSchema } from '@/lib/validations/report' // Assuming base for form values
+import { fetchCustomers_cli } from '@/services/customerService'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +21,8 @@ import { CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { CustomerForm } from '../customers/customer-form'
 
 // Use the base schema for form values, file handled separately
 type ReportFormValues = z.infer<typeof reportBaseSchema>
@@ -27,6 +30,11 @@ type ReportFormValues = z.infer<typeof reportBaseSchema>
 interface ReportFormProps {
 	reportData?: PrismaReport | null
 	onSuccess: () => void
+}
+
+// Utility: Render customer display name
+function getCustomerDisplayName(customer: { name: string; phone?: string | null; email?: string | null }) {
+	return `${customer.name} (${customer.phone || customer.email || 'N/A'})`
 }
 
 const reportQueryKeys = {
@@ -62,13 +70,17 @@ async function saveReportAPI(payload: { formData: FormData; reportId?: string })
 async function fetchReportCategoriesForForm(): Promise<PrismaReportCategory[]> {
 	const res = await fetch('/api/report-categories')
 	if (!res.ok) throw new Error('Failed to fetch report categories')
-	return res.json()
+	const result = await res.json()
+	return result.categories || [] // Extract the categories array from the response
 }
 
 export function ReportForm({ reportData, onSuccess }: ReportFormProps) {
 	const isEditing = !!reportData
 	const queryClient = useQueryClient()
 	const [selectedFile, setSelectedFile] = useState<File | null>(null)
+	const [customerSearchTerm, setCustomerSearchTerm] = useState('')
+	const [selectedCustomerName, setSelectedCustomerName] = useState<string | null>(null)
+	const [isCustomerSheetOpen, setIsCustomerSheetOpen] = useState(false)
 
 	const form = useForm<ReportFormValues>({
 		resolver: zodResolver(reportBaseSchema), // Use base schema for form fields
@@ -78,6 +90,7 @@ export function ReportForm({ reportData, onSuccess }: ReportFormProps) {
 			reportDate: reportData?.reportDate ? new Date(reportData.reportDate) : new Date(),
 			notes: reportData?.notes ?? null,
 			categoryId: reportData?.categoryId ?? '',
+			customerId: null, // For now, always start with null until migration is complete
 		},
 	})
 
@@ -88,14 +101,43 @@ export function ReportForm({ reportData, onSuccess }: ReportFormProps) {
 			reportDate: reportData?.reportDate ? new Date(reportData.reportDate) : new Date(),
 			notes: reportData?.notes ?? null,
 			categoryId: reportData?.categoryId ?? '',
+			customerId: null, // For now, always start with null until migration is complete
 		})
 		setSelectedFile(null) // Reset file on data change
+		setSelectedCustomerName(null) // Reset customer selection
+		setCustomerSearchTerm('')
 	}, [reportData, form])
+
+	const { data: liveCustomerResults = [], isLoading: customerSearchLoading } = useQuery({
+		queryKey: ['report-customer-search', customerSearchTerm],
+		queryFn: () => (customerSearchTerm ? fetchCustomers_cli(1, 10, customerSearchTerm).then(res => res.customers) : Promise.resolve([])),
+		enabled: !!customerSearchTerm,
+	})
 
 	const { data: reportCategories, isLoading: isLoadingCategories } = useQuery<PrismaReportCategory[], Error>({
 		queryKey: reportQueryKeys.categories,
 		queryFn: fetchReportCategoriesForForm,
 	})
+
+	const handleSelectCustomer = useCallback(
+		(customer: PrismaCustomer) => {
+			form.setValue('customerId', customer.id)
+			setSelectedCustomerName(getCustomerDisplayName(customer))
+			setCustomerSearchTerm('')
+		},
+		[form],
+	)
+
+	const handleNewCustomerSuccess = useCallback(
+		(newCustomer: PrismaCustomer) => {
+			queryClient.invalidateQueries({ queryKey: ['all-customer-names'] })
+			setIsCustomerSheetOpen(false)
+			setSelectedCustomerName(getCustomerDisplayName(newCustomer))
+			form.setValue('customerId', newCustomer.id)
+			setCustomerSearchTerm('')
+		},
+		[form, queryClient],
+	)
 
 	const reportMutation = useMutation({
 		mutationFn: saveReportAPI,
@@ -162,6 +204,80 @@ export function ReportForm({ reportData, onSuccess }: ReportFormProps) {
 						</FormItem>
 					)}
 				/>
+
+				{/* Customer Search and Selection */}
+				<div className='space-y-2'>
+					<FormLabel>Customer (Optional)</FormLabel>
+					{selectedCustomerName ? (
+						<div className='flex items-center gap-2'>
+							<Input
+								readOnly
+								value={selectedCustomerName}
+								className='bg-muted'
+							/>
+							<Button
+								type='button'
+								variant='outline'
+								onClick={() => {
+									setSelectedCustomerName(null)
+									form.setValue('customerId', null)
+								}}>
+								Clear
+							</Button>
+						</div>
+					) : (
+						<>
+							<Input
+								placeholder='Search customer by name, phone, or email...'
+								value={customerSearchTerm}
+								onChange={e => {
+									setCustomerSearchTerm(e.target.value)
+									setSelectedCustomerName(null)
+									form.setValue('customerId', null)
+								}}
+							/>
+							{customerSearchTerm && (
+								<div className='border rounded-md max-h-40 overflow-y-auto bg-background z-10'>
+									{customerSearchLoading && <div className='p-2 text-muted-foreground'>Searching...</div>}
+									{liveCustomerResults.length > 0
+										? liveCustomerResults.map(customer => (
+												<div
+													key={customer.id}
+													className='p-2 hover:bg-accent cursor-pointer'
+													onClick={() => handleSelectCustomer(customer)}>
+													{getCustomerDisplayName(customer)}
+												</div>
+											))
+										: !customerSearchLoading && (
+												<div className='text-sm text-muted-foreground p-2'>
+													No customers found.
+													<Sheet
+														open={isCustomerSheetOpen}
+														onOpenChange={setIsCustomerSheetOpen}>
+														<SheetTrigger asChild>
+															<Button
+																variant='link'
+																className='h-auto p-0 ml-1 text-primary underline'>
+																Create new customer
+															</Button>
+														</SheetTrigger>
+														<SheetContent>
+															<SheetHeader>
+																<SheetTitle>Add New Customer</SheetTitle>
+															</SheetHeader>
+															<CustomerForm
+																onSuccess={handleNewCustomerSuccess}
+																customerData={null}
+															/>
+														</SheetContent>
+													</Sheet>
+												</div>
+											)}
+								</div>
+							)}
+						</>
+					)}
+				</div>
 
 				<FormField
 					control={form.control}

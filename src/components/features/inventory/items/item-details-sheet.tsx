@@ -4,6 +4,8 @@ import { DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Package, Building2, Calendar, DollarSign, FileText, Tag, Warehouse, Clock, AlertTriangle, CheckCircle, XCircle } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { Role } from '@/generated/prisma'
 
 interface ItemDetailsSheetProps {
 	item: ItemWithRelations | null
@@ -14,6 +16,8 @@ interface ItemDetailsSheetProps {
 }
 
 export const ItemDetailsSheet = ({ item, isOpen, onOpenChange, onCategoryFilter, onSupplierFilter }: ItemDetailsSheetProps) => {
+	const { data: session } = useSession()
+
 	const handleCategoryClick = (categoryId: string) => {
 		onCategoryFilter(categoryId)
 		onOpenChange(false)
@@ -23,6 +27,9 @@ export const ItemDetailsSheet = ({ item, isOpen, onOpenChange, onCategoryFilter,
 		onSupplierFilter(supplierId)
 		onOpenChange(false)
 	}
+
+	// Check if user can see sensitive data
+	const canViewSensitiveData = session?.user?.role === Role.ADMIN || session?.user?.role === Role.PHARMACIST || session?.user?.role === Role.SUPER_ADMIN
 
 	if (!item) return null
 
@@ -144,93 +151,98 @@ export const ItemDetailsSheet = ({ item, isOpen, onOpenChange, onCategoryFilter,
 
 					<Separator />
 
-					{/* Stock Information */}
-					<div className='space-y-4'>
-						<div className='flex items-center gap-2 mb-4'>
-							<div className='p-1.5 bg-green-100 rounded-md dark:bg-green-900/50'>
-								<Warehouse className='h-5 w-5 text-green-600 dark:text-green-400' />
+					{/* Stock Information - Only for admin/pharmacist/super_admin */}
+					{canViewSensitiveData && (
+						<div className='space-y-4'>
+							<div className='flex items-center gap-2 mb-4'>
+								<div className='p-1.5 bg-green-100 rounded-md dark:bg-green-900/50'>
+									<Warehouse className='h-5 w-5 text-green-600 dark:text-green-400' />
+								</div>
+								<h3 className='text-lg font-semibold text-foreground'>Stock Information</h3>
 							</div>
-							<h3 className='text-lg font-semibold text-foreground'>Stock Information</h3>
+							<div className='bg-green-50/50 dark:bg-green-950/30 rounded-lg p-4 border border-green-200/50 dark:border-green-800/40 transition-colors duration-200'>
+								<div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
+									<div className='space-y-1'>
+										<h4 className='text-sm font-medium text-muted-foreground'>Quantity in Stock</h4>
+										<div className='flex items-center gap-2'>
+											<p className='text-2xl font-bold text-green-700 dark:text-green-400'>{item.quantity_in_stock || 0}</p>
+											{item.reorder_level && item.quantity_in_stock && item.quantity_in_stock <= item.reorder_level && (
+												<Badge
+													variant='destructive'
+													className='text-xs'>
+													<AlertTriangle className='w-3 h-3 mr-1' />
+													Low Stock
+												</Badge>
+											)}
+										</div>
+									</div>
+									{item.reorder_level && (
+										<div className='space-y-1'>
+											<h4 className='text-sm font-medium text-muted-foreground flex items-center gap-1'>
+												<AlertTriangle className='w-3 h-3' />
+												Reorder Level
+											</h4>
+											<p className='text-lg font-semibold text-orange-600 dark:text-orange-400'>{item.reorder_level}</p>
+										</div>
+									)}
+									{item.expiry_date && (
+										<div className='space-y-1'>
+											<h4 className='text-sm font-medium text-muted-foreground flex items-center gap-1'>
+												<Calendar className='w-3 h-3' />
+												Expiry Date
+											</h4>
+											<p className='text-foreground font-medium'>{new Date(item.expiry_date).toLocaleDateString()}</p>
+										</div>
+									)}
+								</div>
+							</div>
 						</div>
-						<div className='bg-green-50/50 dark:bg-green-950/30 rounded-lg p-4 border border-green-200/50 dark:border-green-800/40 transition-colors duration-200'>
-							<div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
-								<div className='space-y-1'>
-									<h4 className='text-sm font-medium text-muted-foreground'>Quantity in Stock</h4>
-									<div className='flex items-center gap-2'>
-										<p className='text-2xl font-bold text-green-700 dark:text-green-400'>{item.quantity_in_stock || 0}</p>
-										{item.reorder_level && item.quantity_in_stock && item.quantity_in_stock <= item.reorder_level && (
-											<Badge
-												variant='destructive'
-												className='text-xs'>
-												<AlertTriangle className='w-3 h-3 mr-1' />
-												Low Stock
-											</Badge>
+					)}
+
+					{/* Pricing Information - Only for admin/pharmacist/super_admin */}
+					{canViewSensitiveData && (
+						<>
+							<Separator />
+							<div className='space-y-4'>
+								<div className='flex items-center gap-2 mb-4'>
+									<div className='p-1.5 bg-emerald-100 rounded-md dark:bg-emerald-900/50'>
+										<DollarSign className='h-5 w-5 text-emerald-600 dark:text-emerald-400' />
+									</div>
+									<h3 className='text-lg font-semibold text-foreground'>Pricing Information</h3>
+								</div>
+								<div className='bg-emerald-50/50 dark:bg-emerald-950/30 rounded-lg p-4 border border-emerald-200/50 dark:border-emerald-800/40 transition-colors duration-200'>
+									<div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
+										<div className='space-y-1'>
+											<h4 className='text-sm font-medium text-muted-foreground'>Selling Price</h4>
+											<p className='text-2xl font-bold text-emerald-700 dark:text-emerald-400'>${item.price.toFixed(2)}</p>
+										</div>
+										{item.purchase_price && (
+											<div className='space-y-1'>
+												<h4 className='text-sm font-medium text-muted-foreground'>Purchase Price</h4>
+												<p className='text-lg font-semibold text-muted-foreground'>${item.purchase_price.toFixed(2)}</p>
+											</div>
+										)}
+										{item.tax_rate && (
+											<div className='space-y-1'>
+												<h4 className='text-sm font-medium text-muted-foreground'>Tax Rate</h4>
+												<p className='text-lg font-semibold text-purple-600 dark:text-purple-400'>{(item.tax_rate * 100).toFixed(1)}%</p>
+											</div>
 										)}
 									</div>
+									{item.purchase_price && (
+										<div className='mt-4 pt-4 border-t border-emerald-200/50 dark:border-emerald-800/40'>
+											<div className='flex justify-between items-center text-sm'>
+												<span className='text-muted-foreground'>Profit Margin:</span>
+												<span className='font-semibold text-emerald-700 dark:text-emerald-400'>
+													${(item.price - item.purchase_price).toFixed(2)} ({(((item.price - item.purchase_price) / item.purchase_price) * 100).toFixed(1)}%)
+												</span>
+											</div>
+										</div>
+									)}
 								</div>
-								{item.reorder_level && (
-									<div className='space-y-1'>
-										<h4 className='text-sm font-medium text-muted-foreground flex items-center gap-1'>
-											<AlertTriangle className='w-3 h-3' />
-											Reorder Level
-										</h4>
-										<p className='text-lg font-semibold text-orange-600 dark:text-orange-400'>{item.reorder_level}</p>
-									</div>
-								)}
-								{item.expiry_date && (
-									<div className='space-y-1'>
-										<h4 className='text-sm font-medium text-muted-foreground flex items-center gap-1'>
-											<Calendar className='w-3 h-3' />
-											Expiry Date
-										</h4>
-										<p className='text-foreground font-medium'>{new Date(item.expiry_date).toLocaleDateString()}</p>
-									</div>
-								)}
 							</div>
-						</div>
-					</div>
-
-					<Separator />
-
-					{/* Pricing Information */}
-					<div className='space-y-4'>
-						<div className='flex items-center gap-2 mb-4'>
-							<div className='p-1.5 bg-emerald-100 rounded-md dark:bg-emerald-900/50'>
-								<DollarSign className='h-5 w-5 text-emerald-600 dark:text-emerald-400' />
-							</div>
-							<h3 className='text-lg font-semibold text-foreground'>Pricing Information</h3>
-						</div>
-						<div className='bg-emerald-50/50 dark:bg-emerald-950/30 rounded-lg p-4 border border-emerald-200/50 dark:border-emerald-800/40 transition-colors duration-200'>
-							<div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
-								<div className='space-y-1'>
-									<h4 className='text-sm font-medium text-muted-foreground'>Selling Price</h4>
-									<p className='text-2xl font-bold text-emerald-700 dark:text-emerald-400'>${item.price.toFixed(2)}</p>
-								</div>
-								{item.purchase_price && (
-									<div className='space-y-1'>
-										<h4 className='text-sm font-medium text-muted-foreground'>Purchase Price</h4>
-										<p className='text-lg font-semibold text-muted-foreground'>${item.purchase_price.toFixed(2)}</p>
-									</div>
-								)}
-								{item.tax_rate && (
-									<div className='space-y-1'>
-										<h4 className='text-sm font-medium text-muted-foreground'>Tax Rate</h4>
-										<p className='text-lg font-semibold text-purple-600 dark:text-purple-400'>{(item.tax_rate * 100).toFixed(1)}%</p>
-									</div>
-								)}
-							</div>
-							{item.purchase_price && (
-								<div className='mt-4 pt-4 border-t border-emerald-200/50 dark:border-emerald-800/40'>
-									<div className='flex justify-between items-center text-sm'>
-										<span className='text-muted-foreground'>Profit Margin:</span>
-										<span className='font-semibold text-emerald-700 dark:text-emerald-400'>
-											${(item.price - item.purchase_price).toFixed(2)} ({(((item.price - item.purchase_price) / item.purchase_price) * 100).toFixed(1)}%)
-										</span>
-									</div>
-								</div>
-							)}
-						</div>
-					</div>
+						</>
+					)}
 
 					{/* Additional Information */}
 					{(item.description || item.schedule) && (

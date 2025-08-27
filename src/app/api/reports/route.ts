@@ -19,11 +19,30 @@ const paginationSchema = z.object({
 
 export async function GET(req: Request) {
 	try {
+		const { user, response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN, Role.CUSTOMER])
+		if (response) return response
+
 		const url = new URL(req.url)
 		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
 		const { page, limit, search, categoryId, from, to } = params
 
 		const where: any = {}
+
+		// If user is a customer, only show their reports
+		if (user!.role === Role.CUSTOMER) {
+			// Find customer record linked to this user
+			const customer = await db.customer.findFirst({
+				where: { userId: user!.id },
+			})
+
+			if (customer) {
+				where.customerId = customer.id
+			} else {
+				// If customer record not found, return empty results
+				return NextResponse.json({ reports: [], total: 0 })
+			}
+		}
+
 		if (search) {
 			where.OR = [{ title: { contains: search, mode: 'insensitive' } }, { patientName: { contains: search, mode: 'insensitive' } }, { notes: { contains: search, mode: 'insensitive' } }]
 		}
@@ -41,6 +60,7 @@ export async function GET(req: Request) {
 				where,
 				include: {
 					category: true,
+					customer: { select: { id: true, name: true, email: true, phone: true } },
 					uploadedBy: { select: { id: true, email: true } },
 				},
 				orderBy: { createdAt: 'desc' },

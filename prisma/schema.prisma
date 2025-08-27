@@ -221,6 +221,9 @@ model Report {
   categoryId String // Foreign key to ReportCategory
   category   ReportCategory @relation(fields: [categoryId], references: [id])
 
+  customerId String? // Foreign key to Customer (optional for backward compatibility)
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
   uploadedById String // Foreign key to the User who uploaded it
   uploadedBy   User   @relation(fields: [uploadedById], references: [id])
 
@@ -243,6 +246,7 @@ model Customer {
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   sales Sale[] // All sales made to this customer
+  reports Report[] // All medical reports associated with this customer
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

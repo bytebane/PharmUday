@@ -1,18 +1,16 @@
 'use client'
 
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { Customer as PrismaCustomer, Role } from '@/generated/prisma'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Edit, Trash2, MoreHorizontal, ArrowUpDown } from 'lucide-react'
+import { ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ColumnDef, SortingState, PaginationState } from '@tanstack/react-table'
 import { CustomDataTable } from '@/components/custom/custom-data-table'
 import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
 import { CustomerForm } from './customer-form'
 import { fetchCustomers_cli, deleteCustomer_cli } from '@/services/customerService'
 import { AddFAB } from '@/components/AddFAB'
@@ -32,12 +30,22 @@ export function CustomerList() {
 	const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 })
 	const [sorting, setSorting] = useState<SortingState>([])
 	const [search, setSearch] = useState('')
+	const [debouncedSearch, setDebouncedSearch] = useState('')
+
+	// Debounce search input
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setDebouncedSearch(search)
+		}, 300)
+
+		return () => clearTimeout(timer)
+	}, [search])
 
 	const canModify = session?.user?.role === Role.ADMIN || session?.user?.role === Role.SUPER_ADMIN || session?.user?.role === Role.PHARMACIST || session?.user?.role === Role.SELLER
 
 	const { data, isLoading, error } = useQuery<{ customers: PrismaCustomer[]; total: number }, Error>({
-		queryKey: ['customers', 'list', pagination.pageIndex, pagination.pageSize, search],
-		queryFn: () => fetchCustomers_cli(pagination.pageIndex + 1, pagination.pageSize, search),
+		queryKey: ['customers', 'list', pagination.pageIndex, pagination.pageSize, debouncedSearch],
+		queryFn: () => fetchCustomers_cli(pagination.pageIndex + 1, pagination.pageSize, debouncedSearch),
 	})
 
 	const customers = data?.customers ?? []
@@ -133,26 +141,22 @@ export function CustomerList() {
 		[canModify, deleteMutation.isPending, deleteMutation.variables, handleEdit, handleDelete],
 	)
 
-	const isAnyFilterActive = !!search
+	const isAnyFilterActive = !!debouncedSearch
 
 	if (error) return <div className='text-red-600'>Error: {error.message}</div>
 
 	return (
 		<div className='w-full'>
 			<div className='mb-4 flex flex-wrap items-center gap-2 rounded-md border p-4'>
-				{isLoading ? (
-					<Skeleton className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-2xs' />
-				) : (
-					<Input
-						placeholder='Search customers...'
-						value={search}
-						onChange={event => {
-							setSearch(event.target.value)
-							setPagination(p => ({ ...p, pageIndex: 0 }))
-						}}
-						className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-2xs'
-					/>
-				)}
+				<Input
+					placeholder='Search customers...'
+					value={search}
+					onChange={event => {
+						setSearch(event.target.value)
+						setPagination(p => ({ ...p, pageIndex: 0 }))
+					}}
+					className='h-10 w-full sm:w-auto sm:flex-grow md:max-w-2xs'
+				/>
 				{isAnyFilterActive && (
 					<Button
 						variant='ghost'

@@ -39,6 +39,10 @@ function getPeriodRange(period: string) {
 
 export async function GET(req: Request) {
 	try {
+		// Add authorization - only allow ADMIN, PHARMACIST, SUPER_ADMIN, and SELLER to view all sales
+		const { user, response } = await authorize([Role.ADMIN, Role.PHARMACIST, Role.SUPER_ADMIN, Role.SELLER])
+		if (response) return response
+
 		const url = new URL(req.url)
 		const params = paginationSchema.parse(Object.fromEntries(url.searchParams))
 		const { page, limit, search, period } = params
@@ -49,7 +53,7 @@ export async function GET(req: Request) {
 		let sales, total
 
 		if (!isAllSales) {
-			// Use Elasticsearch for any filter or search
+			// Use Elasticsearch for any filter or search, with DB fallback when ES is down
 			const must: object[] = []
 			const filter: object[] = []
 
@@ -78,16 +82,38 @@ export async function GET(req: Request) {
 			if (must.length > 0) esQuery.bool.must = must
 			if (filter.length > 0) esQuery.bool.filter = filter
 
-			const esResult = await esClient.search({
-				index: ElasticIndex.SALES,
-				from: (page - 1) * limit,
-				size: limit,
-				query: esQuery,
-			})
+			try {
+				const esResult = await esClient.search({
+					index: ElasticIndex.SALES,
+					from: (page - 1) * limit,
+					size: limit,
+					query: esQuery,
+				})
 
-			const hits = esResult.hits.hits
-			sales = hits.map(hit => hit._source)
-			total = typeof esResult.hits.total === 'object' ? esResult.hits.total.value : esResult.hits.total
+				const hits = esResult.hits.hits as any[]
+				sales = hits.map(hit => (hit as any)._source)
+				total = typeof esResult.hits.total === 'object' ? (esResult.hits.total as any).value : (esResult.hits.total as number)
+			} catch (esError) {
+				// Fallback to DB when Elasticsearch is unavailable
+				const where: any = {}
+				if (search) {
+					where.OR = [{ invoice: { id: { contains: search, mode: 'insensitive' } } }, { customer: { name: { contains: search, mode: 'insensitive' } } }, { staff: { email: { contains: search, mode: 'insensitive' } } }]
+				}
+				if (period && period !== 'all_time') {
+					const range = getPeriodRange(period)
+					if (range) where.saleDate = { gte: range.gte, lt: range.lt }
+				}
+				;[sales, total] = await Promise.all([
+					db.sale.findMany({
+						where,
+						include: { invoice: true, customer: true, staff: true },
+						orderBy: { saleDate: 'desc' },
+						skip: (page - 1) * limit,
+						take: limit,
+					}),
+					db.sale.count({ where }),
+				])
+			}
 		} else {
 			// Use DB for all sales (no filters, no search)
 			;[sales, total] = await Promise.all([
@@ -200,14 +226,16 @@ export async function POST(req: NextRequest) {
 			return newSale // Return the created sale with its items
 		})
 
-		// Index the sale in Elasticsearch
-		await esClient.index({
-			index: ElasticIndex.SALES,
-			id: result.id,
-			document: {
-				...result,
-			},
-		})
+		// Index the sale in Elasticsearch (best-effort)
+		try {
+			await esClient.index({
+				index: ElasticIndex.SALES,
+				id: result.id,
+				document: { ...result },
+			})
+		} catch (e) {
+			console.warn('[SALES_POST] ES index skipped:', (e as Error).message)
+		}
 
 		return NextResponse.json(result, { status: 201 })
 	} catch (error) {

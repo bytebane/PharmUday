@@ -137,6 +137,21 @@ export function ReportList() {
 				),
 				cell: ({ row }) => row.getValue('patientName') || 'N/A',
 			},
+			...(canModify
+				? [
+						{
+							accessorKey: 'customer.name',
+							header: ({ column }) => (
+								<Button
+									variant='ghost'
+									onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}>
+									Customer <ArrowUpDown className='ml-2 h-4 w-4' />
+								</Button>
+							),
+							cell: ({ row }) => row.original.customer?.name || 'Walk-in',
+						} as ColumnDef<ReportWithRelations>,
+					]
+				: []),
 			{
 				accessorKey: 'reportDate',
 				header: ({ column }) => (
@@ -147,6 +162,23 @@ export function ReportList() {
 					</Button>
 				),
 				cell: ({ row }) => (row.getValue('reportDate') ? new Date(row.getValue('reportDate')).toLocaleDateString() : 'N/A'),
+			},
+			{
+				id: 'file',
+				header: 'File',
+				cell: ({ row }) => (
+					<Button
+						variant='outline'
+						size='sm'
+						asChild>
+						<a
+							href={row.original.fileUrl}
+							target='_blank'
+							rel='noopener noreferrer'>
+							View/Download
+						</a>
+					</Button>
+				),
 			},
 			...(canModify
 				? [
